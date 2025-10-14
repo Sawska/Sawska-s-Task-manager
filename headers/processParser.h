@@ -27,9 +27,18 @@ public:
 };
 
 
+struct ProcessInfo {
+    std::string pid;
+    std::string name;
+    std::string state;
+    std::string ppid;
+    std::string owner;
+    long memoryKb = 0;
+};
+
+
 class ProcessParser {
     public:
-    void outputHardwareSpecs();
      std::string getProcessorSpecs();
     // private:
     ProcessParser() = default;
@@ -56,6 +65,21 @@ class ProcessParser {
 
     std::string getNetworkStats();
     
+    std::vector<std::string> getPids();
+
+    ProcessInfo getProcessInfo(const std::string& pid);
+
+    std::string formatProcessInfoToJson(const ProcessInfo& info);
+
+    bool stopProcess(const std::string& pid);
+
+    bool terminateProcess(const std::string& pid);
+
+    std::string mapUidToUsername(const std::string& uid);
+
+    std::string getProcessOwner(const std::string& pid);
+
+    long getProcessActiveJiffies(const std::string& pid);
 };
 
 

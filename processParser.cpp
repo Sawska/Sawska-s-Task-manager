@@ -7,7 +7,8 @@
 #include <stdexcept>
 #include <map>
 #include <iomanip> 
-
+#include <cctype>
+#include <signal.h>
 
 std::vector<std::string> ProcessParser::readProcessFileSystem(const std::string& filePath) {
     std::vector<std::string> processes;
@@ -359,4 +360,205 @@ std::string ProcessParser::getNetworkStats() {
     }
     
     return result.str();
+}
+
+bool is_numeric(const std::string& s) {
+    if (s.empty()) {
+        return false;
+    }
+
+    for(char c: s) {
+        if (!std::isdigit(c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+std::vector<std::string> ProcessParser::getPids() {
+    std::vector<std::string> pids;
+
+    const std::string proc_path = "/proc";
+
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator(proc_path)) {
+
+            if (entry.is_directory()) {
+                std::string filename = entry.path().filename().string();
+                
+                
+                if(is_numeric(filename)) {
+                    pids.push_back(filename);
+                }
+            }
+        }
+    } catch (std::filesystem::filesystem_error& e) {
+        throw std::runtime_error("Filesystem error while reading /proc " + std::string(e.what()));
+    }
+
+    return pids;
+}
+
+
+ProcessInfo ProcessParser::getProcessInfo(const std::string& pid) {
+    ProcessInfo info;
+    info.pid = pid;
+
+    std::string memString, uidString; 
+    std::string statusFilePath = "/proc/" + pid + "/status";
+
+    std::map<std::string, std::string*> specMapping = {
+        {"Name:", &info.name},
+        {"State:", &info.state},
+        {"PPid:", &info.ppid},
+        {"Uid:", &uidString},   
+        {"VmRSS:", &memString}
+    };
+
+    std::ifstream statusFile(statusFilePath);
+    if (!statusFile.is_open()) {
+        info.name = "process_terminated";
+        return info;
+    }
+
+    std::string line;
+    while (std::getline(statusFile, line)) {
+        for (auto const& [key, valPtr] : specMapping) {
+            if (line.rfind(key, 0) == 0) {
+                *valPtr = getSpecValue(line);
+                break;
+            }
+        }
+    }
+
+    std::string realUid;
+    if (!uidString.empty()) {
+        std::stringstream ss(uidString);
+        ss >> realUid; 
+    }
+    info.owner = mapUidToUsername(realUid); 
+
+    try {
+        if (!memString.empty()) {
+            size_t spacePos = memString.find(' ');
+            if (spacePos != std::string::npos) {
+                info.memoryKb = std::stol(memString.substr(0, spacePos));
+            }
+        }
+    } catch (const std::invalid_argument& e) {
+        info.memoryKb = 0;
+    }
+    
+    return info;
+}
+
+std::string ProcessParser::formatProcessInfoToJson(const ProcessInfo& info) {
+    std::string jsonOutput = "{\n";
+    jsonOutput += "  \"pid\": \"" + info.pid + "\",\n";
+    jsonOutput += "  \"name\": \"" + info.name + "\",\n";
+    jsonOutput += "  \"state\": \"" + info.state + "\",\n";
+    jsonOutput += "  \"owner\": \"" + info.owner + "\",\n";
+    jsonOutput += "  \"ppid\": \"" + info.ppid + "\",\n";
+    jsonOutput += "  \"memory_kb\": " + std::to_string(info.memoryKb) + "\n";
+    jsonOutput += "}";
+    return jsonOutput;
+}
+
+bool ProcessParser::stopProcess(const std::string& pid) {
+    try {
+       
+        return kill(std::stoi(pid), SIGTERM) == 0;
+    } catch (const std::invalid_argument& e) {
+        return false; 
+    }
+}
+
+bool ProcessParser::terminateProcess(const std::string& pid) {
+    try {
+        return kill(std::stoi(pid), SIGKILL) == 0;
+    } catch (const std::invalid_argument& e) {
+        return false; 
+    }
+}
+
+
+std::string ProcessParser::mapUidToUsername(const std::string& uid) {
+    std::ifstream passwdFile("/etc/passwd");
+
+    if(!passwdFile.is_open()) {
+        return uid;
+    }
+
+    std::string line;
+
+    while (std::getline(passwdFile,line)) {
+        std::stringstream ss(line);
+
+        std::string username,placeholder,currentUid;
+
+        std::getline(ss,username,':');
+        std::getline(ss,placeholder,':');
+        std::getline(ss,currentUid,':');
+
+        if (currentUid == uid) {
+            return username;
+        }
+
+    }
+    return uid;
+}
+
+std::string ProcessParser::getProcessOwner(const std::string& pid) {
+    std::ifstream statusFile("/proc/" + pid + "/status");
+
+    if(!statusFile.is_open()) {
+        return "N/A";
+    }
+
+    std::string line;
+    
+
+    while(std::getline(statusFile,line)) {
+        if(line.rfind("Uid:",0) == 0) {
+            std::stringstream ss(line);
+            std::string key,uid;
+            ss >> key >> uid;
+            return mapUidToUsername(uid);
+        }
+    }
+    return "N/A";
+}
+
+
+long ProcessParser::getProcessActiveJiffies(const std::string& pid) {
+    std::ifstream statFile("/proc/" + pid + "/stat");
+
+    if(!statFile.is_open()) {
+        return 0;
+    }
+
+    std::string line;
+
+    std::getline(statFile,line);
+
+    size_t nameEndPos = line.rfind(')');
+
+    if(nameEndPos == std::string::npos) {
+        return 0;
+    }
+
+
+    std::stringstream ss(line.substr(nameEndPos+2));
+
+    long utime,stime,cutime,cstime;
+    std::string temp;
+
+    for(int i =0;i<11;i++) {
+        ss >> temp;
+    }
+
+    ss >> utime >> stime >> cutime >> cstime;
+
+    return utime + stime + cutime + cstime;
 }
