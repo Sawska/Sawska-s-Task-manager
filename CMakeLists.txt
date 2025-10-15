@@ -10,7 +10,8 @@ set(CMAKE_BUILD_TYPE Debug)
 add_executable(TaskManager 
 main.cpp
 processParser.cpp
-
+ServiceManager.cpp
+StartupManager.cpp
 )
 
 

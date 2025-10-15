@@ -80,6 +80,21 @@ class ProcessParser {
     std::string getProcessOwner(const std::string& pid);
 
     long getProcessActiveJiffies(const std::string& pid);
+
+    std::string getProcessIoStats(const std::string& pid);
+
+    std::string getProcessExecutablePath(const std::string& pid);
+
+    bool searchProcessOnInternet(const std::string& processName);
+
+    std::vector<std::string> getLoggedInUsers();
+    
+    std::string getSystemDiskStats();
+
+    std::string executeCommand(const std::string& cmd);
+
+    std::string getSystemLogs(int numLines);
+
 };
 
 

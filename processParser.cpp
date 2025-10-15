@@ -562,3 +562,167 @@ long ProcessParser::getProcessActiveJiffies(const std::string& pid) {
 
     return utime + stime + cutime + cstime;
 }
+
+std::string ProcessParser::getProcessIoStats(const std::string& pid) {
+    std::string ioFilePath = "/proc/" + pid + "/io";
+    std::ifstream ioFile(ioFilePath);
+    if (!ioFile.is_open()) {
+        return "N/A";
+    }
+
+    long readBytes = 0;
+    long writeBytes = 0;
+    std::string line;
+
+    while (std::getline(ioFile, line)) {
+        if (line.rfind("read_bytes:", 0) == 0) {
+            std::string value = getSpecValue(line);
+            try {
+                readBytes = std::stol(value);
+            } catch (const std::invalid_argument& e) {
+                readBytes = 0;
+            }
+        } else if (line.rfind("write_bytes:", 0) == 0) {
+            std::string value = getSpecValue(line);
+            try {
+                writeBytes = std::stol(value);
+            } catch (const std::invalid_argument& e) {
+                writeBytes = 0;
+            }
+        }
+    }
+
+    return "R: " + formatBytes(readBytes) + " | W: " + formatBytes(writeBytes);
+}
+
+std::string ProcessParser::getProcessExecutablePath(const std::string& pid) {
+    std::string exePath = "/proc/" + pid + "/exe";
+    std::string realPath;
+    
+    std::vector<char> buf(4096);
+    ssize_t len = readlink(exePath.c_str(), buf.data(), buf.size() - 1);
+
+    if (len != -1) {
+        buf[len] = '\0';
+        realPath = std::string(buf.data());
+        return realPath;
+    }
+
+    return "N/A (Access Denied or Terminated)";
+}
+
+bool ProcessParser::searchProcessOnInternet(const std::string& processName) {
+        std::string url = "https://www.google.com/search?q=what+is+" + processName + "+process";
+    
+    
+    std::replace(url.begin(), url.end(), ' ', '+');
+
+    std::string command = "xdg-open " + url;
+    
+
+    return std::system((command + " &").c_str()) == 0;
+}
+
+std::vector<std::string> ProcessParser::getLoggedInUsers() {
+    std::vector<std::string> users;
+ 
+    
+    FILE* pipe = popen("who | awk '{print $1}' | sort -u", "r");
+    if (!pipe) return {"Error executing command"};
+
+    char buffer[128];
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+        std::string user_line(buffer);
+        trim(user_line);
+        if (!user_line.empty()) {
+            users.push_back(user_line);
+        }
+    }
+
+    pclose(pipe);
+    return users;
+}
+
+
+std::string ProcessParser::getSystemDiskStats() {
+    std::ifstream diskStatsFile("/proc/diskstats");
+    if (!diskStatsFile.is_open()) {
+        return "N/A (Could not open /proc/diskstats)";
+    }
+
+    std::stringstream result;
+    std::string line;
+    long totalReads = 0;
+    long totalWrites = 0;
+    
+    
+    while (std::getline(diskStatsFile, line)) {
+        std::stringstream ss(line);
+        int major, minor;
+        std::string device;
+        long reads, writes;
+        long temp;
+
+        ss >> major >> minor >> device;
+        
+        if (device.find("loop") == 0 || device.find("ram") == 0 || device.find("dm-") == 0) {
+            continue;
+        }
+
+        ss >> reads;
+        ss >> temp; 
+        ss >> temp; 
+        ss >> temp; 
+
+        ss >> writes;
+        
+        ss >> temp;
+        ss >> temp;
+        long writtenSectors = temp;
+        
+        ss.clear();
+        ss.seekg(0, std::ios::beg);
+
+        ss >> major >> minor >> device >> temp >> temp;
+        long readSectors;
+        ss >> readSectors;
+
+        totalReads += readSectors;
+        totalWrites += writtenSectors;
+    }
+
+    long readBytes = totalReads * 512;
+    long writeBytes = totalWrites * 512;
+
+    result << "Total Read: " << formatBytes(readBytes)
+           << " | Total Write: " << formatBytes(writeBytes);
+
+    return result.str();
+}
+
+
+std::string ProcessParser::executeCommand(const std::string& cmd) {
+    std::string result;
+    char buffer[128];
+    FILE* pipe = popen(cmd.c_str(), "r"); 
+    if (!pipe) {
+        return "Error: Could not execute command.";
+    }
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+        result += buffer;
+    }
+    pclose(pipe);
+    return result;
+}
+
+
+std::string ProcessParser::getSystemLogs(int numLines) {
+    if (numLines <= 0) {
+        return "Error: Invalid number of lines requested.";
+    }
+
+ 
+    std::string command = "journalctl -n " + std::to_string(numLines) + " --no-pager";
+    
+    return executeCommand(command);
+}
