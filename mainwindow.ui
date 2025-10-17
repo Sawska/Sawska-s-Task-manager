@@ -269,9 +269,6 @@
           <property name="editTriggers">
            <set>QAbstractItemView::NoEditTriggers</set>
           </property>
-          <property name="showGrid">
-           <bool>false</bool>
-          </property>
           <attribute name="headerStretchLastSection">
            <bool>false</bool>
           </attribute>
