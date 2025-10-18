@@ -27,6 +27,11 @@ public:
 };
 
 
+struct IoStats {
+    long readBytes = 0;
+    long writeBytes = 0;
+};
+
 struct ProcessInfo {
     std::string pid;
     std::string name;
@@ -94,6 +99,9 @@ class ProcessParser {
     std::string executeCommand(const std::string& cmd);
 
     std::string getSystemLogs(int numLines);
+
+
+    IoStats getProcessIoBytes(const std::string& pid);
 
 };
 

@@ -726,3 +726,34 @@ std::string ProcessParser::getSystemLogs(int numLines) {
     
     return executeCommand(command);
 }
+
+
+IoStats ProcessParser::getProcessIoBytes(const std::string& pid) {
+    std::string ioFilePath = "/proc/" + pid + "/io";
+    std::ifstream ioFile(ioFilePath);
+    IoStats stats;
+
+    if (!ioFile.is_open()) {
+        return stats; 
+    }
+
+    std::string line;
+    while (std::getline(ioFile, line)) {
+        if (line.rfind("read_bytes:", 0) == 0) {
+            std::string value = getSpecValue(line);
+            try {
+                stats.readBytes = std::stol(value);
+            } catch (const std::invalid_argument& e) {
+                stats.readBytes = 0;
+            }
+        } else if (line.rfind("write_bytes:", 0) == 0) {
+            std::string value = getSpecValue(line);
+            try {
+                stats.writeBytes = std::stol(value);
+            } catch (const std::invalid_argument& e) {
+                stats.writeBytes = 0;
+            }
+        }
+    }
+    return stats;
+}
