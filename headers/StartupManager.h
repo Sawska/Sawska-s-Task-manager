@@ -20,6 +20,8 @@ public:
     std::vector<StartupItem> getSystemAutostartItems();
     std::vector<StartupItem> getUserAutostartItems();
 
+    bool setAutostartItemEnabled(const std::string& itemPath,bool enabled);
+
 private:
     std::vector<StartupItem> parseAutostartDirectory(const std::string& dirPath);
 };

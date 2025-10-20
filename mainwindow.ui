@@ -18,7 +18,8 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>6</number> </property>
+       <number>6</number>
+      </property>
       <widget class="QWidget" name="processesTab">
        <attribute name="title">
         <string>Processes</string>
@@ -113,14 +114,14 @@
         </item>
         <item>
          <widget class="QPushButton" name="deleteHistoryButton">
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
           <property name="text">
            <string>Delete usage history</string>
           </property>
           <property name="flat">
-           <bool>true</bool>
-          </property>
-          <property name="cursor">
-           <cursorShape>PointingHandCursor</cursorShape>
+           <bool>false</bool>
           </property>
          </widget>
         </item>
@@ -527,19 +528,19 @@
    </property>
   </action>
   <action name="actionAlways_on_top">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Always on top</string>
    </property>
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
   </action>
   <action name="actionHide_when_minimized">
-   <property name="text">
-    <string>Hide when minimized</string>
-   </property>
    <property name="checkable">
     <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Hide when minimized</string>
    </property>
   </action>
   <action name="actionExit">
