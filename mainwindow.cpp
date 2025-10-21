@@ -11,7 +11,33 @@
 #include <QMenu>         
 #include <QTimer>        
 #include <QColor>              
- 
+
+QString formatKB(long kb) {
+    if (kb == 0) return "0.0 MB";
+    if (kb < 1024 * 1024) { 
+        return QString::number(kb / 1024.0, 'f', 1) + " MB";
+    } else {
+        return QString::number(kb / (1024.0 * 1024.0), 'f', 1) + " GB";
+    }
+}
+
+QString formatBytes(long bytes) {
+    if (bytes < 1024) {
+        return QString::number(bytes) + " B";
+    } else if (bytes < 1024 * 1024) {
+        return QString::number(bytes / 1024.0, 'f', 1) + " KB";
+    } else {
+        return QString::number(bytes / (1024.0 * 1024.0), 'f', 1) + " MB";
+    }
+}
+
+QString formatBitsRate(double bitsPerSec) {
+    if (bitsPerSec < 1000 * 1000) {
+        return QString::number(bitsPerSec / 1000.0, 'f', 1) + " Kbps";
+    } else {
+         return QString::number(bitsPerSec / (1000.0 * 1000.0), 'f', 1) + " Mbps";
+    }
+}
 
 QString formatBytesRate(double bytesPerSec) {
     if (bytesPerSec < 1024) {
@@ -55,8 +81,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->detailsTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
 
     ui->resourceUsageLabel->setText("Recent system log entries (from journalctl / syslog):");
-    
-    // ui->deleteHistoryButton->setEnabled(false);
+
     ui->deleteHistoryButton->setToolTip("Deleting system logs requires root permissions and is not supported.");
 
     ui->appHistoryTable->setColumnCount(3);
@@ -99,6 +124,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(processTimer, &QTimer::timeout, this, &MainWindow::refreshStats);
     
     prevCpuTimes = parser.getCpuTimes();
+
+    setupPerformanceTab();
+
+    m_prevDiskStats = parser.getDiskStats();
+    m_prevNetStats = parser.getNetworkStats();
+    m_prevDiskIOTime = m_prevDiskStats.timeSpentIO;
     
     refreshStats();
     processTimer->start(1000);
@@ -214,145 +245,145 @@ void MainWindow::on_disableStartupButton_clicked()
 
 
 
-void MainWindow::refreshStats()
-{
-    CpuTimes currentCpuTimes = parser.getCpuTimes();
-    long deltaTotal = currentCpuTimes.totalTime() - prevCpuTimes.totalTime();
+// void MainWindow::refreshStats()
+// {
+//     CpuTimes currentCpuTimes = parser.getCpuTimes();
+//     long deltaTotal = currentCpuTimes.totalTime() - prevCpuTimes.totalTime();
     
-    double timeIntervalSec = processTimer->interval() / 1000.0;
-    if (timeIntervalSec == 0) timeIntervalSec = 1.0; 
+//     double timeIntervalSec = processTimer->interval() / 1000.0;
+//     if (timeIntervalSec == 0) timeIntervalSec = 1.0; 
 
-    std::map<std::string, long> currentProcessJiffies;
-    std::map<std::string, IoStats> currentProcessIo;
+//     std::map<std::string, long> currentProcessJiffies;
+//     std::map<std::string, IoStats> currentProcessIo;
     
-    QMap<QString, long> userMemoryMap;
-    QMap<QString, double> userCpuMap;
-    QMap<QString, double> userDiskReadMap; 
-    QMap<QString, double> userDiskWriteMap;
+//     QMap<QString, long> userMemoryMap;
+//     QMap<QString, double> userCpuMap;
+//     QMap<QString, double> userDiskReadMap; 
+//     QMap<QString, double> userDiskWriteMap;
 
-    ui->processTable->setSortingEnabled(false);
-    ui->processTable->setRowCount(0); 
-    ui->usersTreeWidget->clear();
+//     ui->processTable->setSortingEnabled(false);
+//     ui->processTable->setRowCount(0); 
+//     ui->usersTreeWidget->clear();
 
 
-    std::vector<std::string> pids = parser.getPids();
-    for (const std::string& pid_std : pids) 
-    {
-        ProcessInfo info = parser.getProcessInfo(pid_std);
+//     std::vector<std::string> pids = parser.getPids();
+//     for (const std::string& pid_std : pids) 
+//     {
+//         ProcessInfo info = parser.getProcessInfo(pid_std);
         
-        long currentJiffies = parser.getProcessActiveJiffies(pid_std);
-        currentProcessJiffies[pid_std] = currentJiffies;
-        long prevJiffies = 0;
-        auto it = prevProcessJiffies.find(pid_std);
-        if (it != prevProcessJiffies.end()) prevJiffies = it->second;
-        long deltaProc = currentJiffies - prevJiffies;
-        double cpuPercent = 0.0;
-        if (deltaTotal > 0) {
-            cpuPercent = (static_cast<double>(deltaProc) / static_cast<double>(deltaTotal)) * 100.0;
-        }
+//         long currentJiffies = parser.getProcessActiveJiffies(pid_std);
+//         currentProcessJiffies[pid_std] = currentJiffies;
+//         long prevJiffies = 0;
+//         auto it = prevProcessJiffies.find(pid_std);
+//         if (it != prevProcessJiffies.end()) prevJiffies = it->second;
+//         long deltaProc = currentJiffies - prevJiffies;
+//         double cpuPercent = 0.0;
+//         if (deltaTotal > 0) {
+//             cpuPercent = (static_cast<double>(deltaProc) / static_cast<double>(deltaTotal)) * 100.0;
+//         }
 
-        IoStats currentIo = parser.getProcessIoBytes(pid_std);
-        currentProcessIo[pid_std] = currentIo;
-        IoStats prevIo;
-        auto io_it = prevProcessIo.find(pid_std);
-        if (io_it != prevProcessIo.end()) prevIo = io_it->second;
+//         IoStats currentIo = parser.getProcessIoBytes(pid_std);
+//         currentProcessIo[pid_std] = currentIo;
+//         IoStats prevIo;
+//         auto io_it = prevProcessIo.find(pid_std);
+//         if (io_it != prevProcessIo.end()) prevIo = io_it->second;
 
-        double readRate = (static_cast<double>(currentIo.readBytes - prevIo.readBytes)) / timeIntervalSec;
-        double writeRate = (static_cast<double>(currentIo.writeBytes - prevIo.writeBytes)) / timeIntervalSec;
+//         double readRate = (static_cast<double>(currentIo.readBytes - prevIo.readBytes)) / timeIntervalSec;
+//         double writeRate = (static_cast<double>(currentIo.writeBytes - prevIo.writeBytes)) / timeIntervalSec;
 
-        int row = ui->processTable->rowCount();
-        ui->processTable->insertRow(row);
+//         int row = ui->processTable->rowCount();
+//         ui->processTable->insertRow(row);
         
-        bool ok;
-        QTableWidgetItem *nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
-        QTableWidgetItem *pidItem = new QTableWidgetItem();
-        qlonglong pidNum = QString::fromStdString(info.pid).toLongLong(&ok);
-        if (ok) pidItem->setData(Qt::DisplayRole, pidNum);
-        else pidItem->setText(QString::fromStdString(info.pid)); 
+//         bool ok;
+//         QTableWidgetItem *nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
+//         QTableWidgetItem *pidItem = new QTableWidgetItem();
+//         qlonglong pidNum = QString::fromStdString(info.pid).toLongLong(&ok);
+//         if (ok) pidItem->setData(Qt::DisplayRole, pidNum);
+//         else pidItem->setText(QString::fromStdString(info.pid)); 
         
-        QTableWidgetItem *cpuItem = new QTableWidgetItem();
-        cpuItem->setData(Qt::DisplayRole, cpuPercent); 
+//         QTableWidgetItem *cpuItem = new QTableWidgetItem();
+//         cpuItem->setData(Qt::DisplayRole, cpuPercent); 
 
-        QTableWidgetItem *memItem = new QTableWidgetItem();
-        memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
+//         QTableWidgetItem *memItem = new QTableWidgetItem();
+//         memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
         
-        QTableWidgetItem *userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
+//         QTableWidgetItem *userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
 
-        ui->processTable->setItem(row, 0, nameItem);
-        ui->processTable->setItem(row, 1, pidItem);
-        ui->processTable->setItem(row, 2, cpuItem);
-        ui->processTable->setItem(row, 3, memItem);
-        ui->processTable->setItem(row, 4, userItem);
+//         ui->processTable->setItem(row, 0, nameItem);
+//         ui->processTable->setItem(row, 1, pidItem);
+//         ui->processTable->setItem(row, 2, cpuItem);
+//         ui->processTable->setItem(row, 3, memItem);
+//         ui->processTable->setItem(row, 4, userItem);
 
-        QString user = QString::fromStdString(info.owner);
-        userMemoryMap[user] += info.memoryKb;
-        userCpuMap[user] += cpuPercent;
-        userDiskReadMap[user] += readRate;
-        userDiskWriteMap[user] += writeRate;
+//         QString user = QString::fromStdString(info.owner);
+//         userMemoryMap[user] += info.memoryKb;
+//         userCpuMap[user] += cpuPercent;
+//         userDiskReadMap[user] += readRate;
+//         userDiskWriteMap[user] += writeRate;
 
-        int detailsRow = ui->detailsTable->rowCount();
-        ui->detailsTable->insertRow(detailsRow);
+//         int detailsRow = ui->detailsTable->rowCount();
+//         ui->detailsTable->insertRow(detailsRow);
         
-        QTableWidgetItem *d_nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
+//         QTableWidgetItem *d_nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
         
-        QTableWidgetItem *d_pidItem = new QTableWidgetItem();
-        d_pidItem->setData(Qt::DisplayRole, pidNum);
+//         QTableWidgetItem *d_pidItem = new QTableWidgetItem();
+//         d_pidItem->setData(Qt::DisplayRole, pidNum);
         
-        QTableWidgetItem *d_statusItem = new QTableWidgetItem(QString::fromStdString(info.state));
-        QTableWidgetItem *d_userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
+//         QTableWidgetItem *d_statusItem = new QTableWidgetItem(QString::fromStdString(info.state));
+//         QTableWidgetItem *d_userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
         
-        QTableWidgetItem *d_cpuItem = new QTableWidgetItem();
-        d_cpuItem->setData(Qt::DisplayRole, cpuPercent);
+//         QTableWidgetItem *d_cpuItem = new QTableWidgetItem();
+//         d_cpuItem->setData(Qt::DisplayRole, cpuPercent);
         
-        QTableWidgetItem *d_memItem = new QTableWidgetItem();
-        d_memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
+//         QTableWidgetItem *d_memItem = new QTableWidgetItem();
+//         d_memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
 
-        ui->detailsTable->setItem(detailsRow, 0, d_nameItem);
-        ui->detailsTable->setItem(detailsRow, 1, d_pidItem);
-        ui->detailsTable->setItem(detailsRow, 2, d_statusItem);
-        ui->detailsTable->setItem(detailsRow, 3, d_userItem);
-        ui->detailsTable->setItem(detailsRow, 4, d_cpuItem);
-        ui->detailsTable->setItem(detailsRow, 5, d_memItem);
-    }
+//         ui->detailsTable->setItem(detailsRow, 0, d_nameItem);
+//         ui->detailsTable->setItem(detailsRow, 1, d_pidItem);
+//         ui->detailsTable->setItem(detailsRow, 2, d_statusItem);
+//         ui->detailsTable->setItem(detailsRow, 3, d_userItem);
+//         ui->detailsTable->setItem(detailsRow, 4, d_cpuItem);
+//         ui->detailsTable->setItem(detailsRow, 5, d_memItem);
+//     }
 
-    prevCpuTimes = currentCpuTimes;
-    prevProcessJiffies = currentProcessJiffies;
-    prevProcessIo = currentProcessIo; 
+//     prevCpuTimes = currentCpuTimes;
+//     prevProcessJiffies = currentProcessJiffies;
+//     prevProcessIo = currentProcessIo; 
 
-    for (auto it = userMemoryMap.constBegin(); it != userMemoryMap.constEnd(); ++it) {
-        QString user = it.key();
-        long memoryKb = it.value();
-        double cpu = userCpuMap.value(user, 0.0);
-        double diskRead = userDiskReadMap.value(user, 0.0);
-        double diskWrite = userDiskWriteMap.value(user, 0.0);
+//     for (auto it = userMemoryMap.constBegin(); it != userMemoryMap.constEnd(); ++it) {
+//         QString user = it.key();
+//         long memoryKb = it.value();
+//         double cpu = userCpuMap.value(user, 0.0);
+//         double diskRead = userDiskReadMap.value(user, 0.0);
+//         double diskWrite = userDiskWriteMap.value(user, 0.0);
 
-        QTreeWidgetItem *item = new QTreeWidgetItem(ui->usersTreeWidget);
+//         QTreeWidgetItem *item = new QTreeWidgetItem(ui->usersTreeWidget);
         
-        QString diskString = QString("R: %1 | W: %2")
-                                 .arg(formatBytesRate(diskRead))
-                                 .arg(formatBytesRate(diskWrite));
+//         QString diskString = QString("R: %1 | W: %2")
+//                                  .arg(formatBytesRate(diskRead))
+//                                  .arg(formatBytesRate(diskWrite));
 
-        item->setText(0, user);
-        item->setData(1, Qt::DisplayRole, cpu);
-        item->setData(2, Qt::DisplayRole, static_cast<qlonglong>(memoryKb)); 
-        item->setText(3, diskString); 
-        item->setText(4, "N/A");      
-    }
+//         item->setText(0, user);
+//         item->setData(1, Qt::DisplayRole, cpu);
+//         item->setData(2, Qt::DisplayRole, static_cast<qlonglong>(memoryKb)); 
+//         item->setText(3, diskString); 
+//         item->setText(4, "N/A");      
+//     }
 
-    ui->processTable->setSortingEnabled(true);
+//     ui->processTable->setSortingEnabled(true);
 
-    ui->detailsTable->setSortingEnabled(true);
+//     ui->detailsTable->setSortingEnabled(true);
 
 
-    m_servicesRefreshCounter++;
+//     m_servicesRefreshCounter++;
     
-    if (m_servicesRefreshCounter >= 5) {
-        m_servicesRefreshCounter = 0;
-        if (ui->tabWidget->currentWidget() == ui->servicesTab) {
-            populateServicesTable();
-        }
-    }
-}
+//     if (m_servicesRefreshCounter >= 5) {
+//         m_servicesRefreshCounter = 0;
+//         if (ui->tabWidget->currentWidget() == ui->servicesTab) {
+//             populateServicesTable();
+//         }
+//     }
+// }
 
 void MainWindow::populateStartupTable()
 {
@@ -459,7 +490,7 @@ void MainWindow::populateServicesTable()
         QTableWidgetItem *loadItem = new QTableWidgetItem(QString::fromStdString(service.loadState));
 
         if (service.state == "active" || service.state == "running") {
-            statusItem->setForeground(QColor(0, 100, 0)); // Dark Green
+            statusItem->setForeground(QColor(0, 100, 0)); 
         } else if (service.state == "failed") {
             statusItem->setForeground(Qt::red);
         } else if (service.state == "inactive" || service.state == "dead") {
@@ -633,4 +664,303 @@ void MainWindow::on_endTaskDetailsButton_clicked()
     }
 
     QTimer::singleShot(500, this, &MainWindow::refreshStats);
+}
+
+
+void MainWindow::setupGraph(QCustomPlot* graph, const QColor& color, bool twoLines)
+{
+    graph->addGraph(); 
+    graph->graph(0)->setPen(QPen(color));
+    graph->graph(0)->setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 20)));
+
+    if (twoLines) {
+        graph->addGraph(); 
+        QColor color2 = (color == Qt::blue ? Qt::red : Qt::blue); 
+        graph->graph(1)->setPen(QPen(color2));
+    }
+
+
+    QSharedPointer<QCPAxisTickerDateTime> dateTicker(new QCPAxisTickerDateTime);
+    dateTicker->setDateTimeFormat("hh:mm:ss");
+    dateTicker->setTickStepStrategy(QCPAxisTicker::tssReadability);
+    dateTicker->setTickCount(5); 
+    graph->xAxis->setTicker(dateTicker);
+
+
+    graph->yAxis->setRange(0, 100); 
+    graph->axisRect()->setupFullAxesBox();
+    graph->legend->setVisible(false);
+}
+
+void MainWindow::setupPerformanceTab()
+{
+    ui->performanceList->addItem("CPU");
+    ui->performanceList->addItem("Memory");
+    
+    std::string diskName = parser.getPrimaryDiskName();
+    diskName.erase(std::remove_if(diskName.begin(), diskName.end(), ::isdigit), diskName.end());
+    ui->performanceList->addItem(QString("Disk 0 (%1)").arg(QString::fromStdString(diskName)));
+    
+    std::string netIface = parser.getPrimaryNetworkInterface();
+    ui->performanceList->addItem(QString("Ethernet (%1)").arg(QString::fromStdString(netIface)));
+    
+    ui->performanceList->addItem("GPU 0");
+    
+    connect(ui->performanceList, &QListWidget::currentRowChanged,
+            this, &MainWindow::on_performanceList_currentRowChanged);
+    
+    ui->cpuNameLabel->setText(QString::fromStdString(parser.getProcessorSpecs()));
+    ui->coresLabel->setText(QString::number(parser.getCoreCount()));
+    ui->logicalProcessorsLabel->setText(QString::number(parser.getLogicalProcessorCount()));
+    ui->diskNameLabel->setText(QString("Disk 0 (%1)").arg(QString::fromStdString(diskName)));
+    ui->netInterfaceLabel->setText(QString("Ethernet (%1)").arg(QString::fromStdString(netIface)));
+    
+    setupGraph(ui->cpuGraph, Qt::blue);
+    setupGraph(ui->memoryGraph, Qt::magenta);
+    setupGraph(ui->diskGraph, Qt::green);
+    setupGraph(ui->ethernetGraph, Qt::cyan, true);
+    
+    ui->performanceList->setCurrentRow(0);
+}
+
+void MainWindow::on_performanceList_currentRowChanged(int row)
+{
+    ui->performanceStackedWidget->setCurrentIndex(row);
+    switch(row) {
+        case 0: ui->cpuGraph->replot(); break;
+        case 1: ui->memoryGraph->replot(); break;
+        case 2: ui->diskGraph->replot(); break;
+        case 3: ui->ethernetGraph->replot(); break;
+    }
+}
+
+void MainWindow::refreshStats()
+{
+
+    CpuTimes currentCpuTimes = parser.getCpuTimes();
+    long deltaTotal = currentCpuTimes.totalTime() - prevCpuTimes.totalTime();
+    long deltaIdle = currentCpuTimes.totalIdleTime() - prevCpuTimes.totalIdleTime();
+    double cpuUsagePercent = 0.0;
+    if (deltaTotal > 0) {
+        cpuUsagePercent = (1.0 - (static_cast<double>(deltaIdle) / static_cast<double>(deltaTotal))) * 100.0;
+    }
+
+    MemInfo memInfo = parser.getMemoryStats();
+    double memUsagePercent = 0.0;
+    if (memInfo.memTotal > 0) {
+        memUsagePercent = (static_cast<double>(memInfo.memUsed()) / memInfo.memTotal) * 100.0;
+    }
+
+    DiskStats currentDiskStats = parser.getDiskStats();
+    double timeIntervalSec = processTimer->interval() / 1000.0;
+    
+    double readSpeed = (currentDiskStats.sectorsRead - m_prevDiskStats.sectorsRead) * 512.0 / timeIntervalSec;
+    double writeSpeed = (currentDiskStats.sectorsWritten - m_prevDiskStats.sectorsWritten) * 512.0 / timeIntervalSec;
+    
+    long deltaIOTime = currentDiskStats.timeSpentIO - m_prevDiskIOTime;
+    double diskActivePercent = (static_cast<double>(deltaIOTime) / (timeIntervalSec * 1000.0)) * 100.0;
+    if (diskActivePercent > 100.0) diskActivePercent = 100.0;
+    
+    FsInfo fsInfo = parser.getFilesystemStats("/");
+
+    NetStats currentNetStats = parser.getNetworkStats();
+    double sendSpeed = (currentNetStats.bytesSent - m_prevNetStats.bytesSent) * 8.0 / timeIntervalSec;
+    double recvSpeed = (currentNetStats.bytesReceived - m_prevNetStats.bytesReceived) * 8.0 / timeIntervalSec;
+
+
+    std::map<std::string, long> currentProcessJiffies;
+    std::map<std::string, IoStats> currentProcessIo;
+    
+    QMap<QString, long> userMemoryMap;
+    QMap<QString, double> userCpuMap;
+    QMap<QString, double> userDiskReadMap; 
+    QMap<QString, double> userDiskWriteMap;
+
+    ui->processTable->setSortingEnabled(false);
+    ui->processTable->setRowCount(0); 
+    ui->detailsTable->setSortingEnabled(false);
+    ui->detailsTable->setRowCount(0);
+    ui->usersTreeWidget->clear();
+
+    std::vector<std::string> pids = parser.getPids();
+    for (const std::string& pid_std : pids) 
+    {
+        ProcessInfo info = parser.getProcessInfo(pid_std);
+        
+        long currentJiffies = parser.getProcessActiveJiffies(pid_std);
+        currentProcessJiffies[pid_std] = currentJiffies;
+        long prevJiffies = 0;
+        auto it = prevProcessJiffies.find(pid_std);
+        if (it != prevProcessJiffies.end()) prevJiffies = it->second;
+        long deltaProc = currentJiffies - prevJiffies;
+        double procCpuPercent = 0.0;
+        if (deltaTotal > 0) {
+            procCpuPercent = (static_cast<double>(deltaProc) / static_cast<double>(deltaTotal)) * 100.0;
+        }
+
+        IoStats currentIo = parser.getProcessIoBytes(pid_std);
+        currentProcessIo[pid_std] = currentIo;
+        IoStats prevIo;
+        auto io_it = prevProcessIo.find(pid_std);
+        if (io_it != prevProcessIo.end()) prevIo = io_it->second;
+
+        double readRate = (static_cast<double>(currentIo.readBytes - prevIo.readBytes)) / timeIntervalSec;
+        double writeRate = (static_cast<double>(currentIo.writeBytes - prevIo.writeBytes)) / timeIntervalSec;
+
+        int row = ui->processTable->rowCount();
+        ui->processTable->insertRow(row);
+        
+        bool ok;
+        QTableWidgetItem *nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
+        QTableWidgetItem *pidItem = new QTableWidgetItem();
+        qlonglong pidNum = QString::fromStdString(info.pid).toLongLong(&ok);
+        if (ok) pidItem->setData(Qt::DisplayRole, pidNum);
+        else pidItem->setText(QString::fromStdString(info.pid)); 
+        
+        QTableWidgetItem *cpuItem = new QTableWidgetItem();
+        cpuItem->setData(Qt::DisplayRole, procCpuPercent); 
+
+        QTableWidgetItem *memItem = new QTableWidgetItem();
+        memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
+        
+        QTableWidgetItem *userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
+
+        ui->processTable->setItem(row, 0, nameItem);
+        ui->processTable->setItem(row, 1, pidItem);
+        ui->processTable->setItem(row, 2, cpuItem);
+        ui->processTable->setItem(row, 3, memItem);
+        ui->processTable->setItem(row, 4, userItem);
+
+        int detailsRow = ui->detailsTable->rowCount();
+        ui->detailsTable->insertRow(detailsRow);
+        
+        QTableWidgetItem *d_pidItem = new QTableWidgetItem();
+        d_pidItem->setData(Qt::DisplayRole, pidNum);
+        
+        ui->detailsTable->setItem(detailsRow, 0, nameItem->clone());
+        ui->detailsTable->setItem(detailsRow, 1, d_pidItem);
+        ui->detailsTable->setItem(detailsRow, 2, new QTableWidgetItem(QString::fromStdString(info.state)));
+        ui->detailsTable->setItem(detailsRow, 3, userItem->clone());
+        ui->detailsTable->setItem(detailsRow, 4, cpuItem->clone());
+        ui->detailsTable->setItem(detailsRow, 5, memItem->clone());
+
+        QString user = QString::fromStdString(info.owner);
+        userMemoryMap[user] += info.memoryKb;
+        userCpuMap[user] += procCpuPercent;
+        userDiskReadMap[user] += readRate;
+        userDiskWriteMap[user] += writeRate;
+    }
+    
+    for (auto it = userMemoryMap.constBegin(); it != userMemoryMap.constEnd(); ++it) {
+        QString user = it.key();
+        long memoryKb = it.value();
+        double cpu = userCpuMap.value(user, 0.0);
+        double diskRead = userDiskReadMap.value(user, 0.0);
+        double diskWrite = userDiskWriteMap.value(user, 0.0);
+
+        QTreeWidgetItem *item = new QTreeWidgetItem(ui->usersTreeWidget);
+        
+        QString diskString = QString("R: %1 | W: %2")
+                                   .arg(formatBytesRate(diskRead))
+                                   .arg(formatBytesRate(diskWrite));
+
+        item->setText(0, user);
+        item->setData(1, Qt::DisplayRole, cpu);
+        item->setData(2, Qt::DisplayRole, static_cast<qlonglong>(memoryKb)); 
+        item->setText(3, diskString); 
+        item->setText(4, "N/A");      
+    }
+
+    ui->processTable->setSortingEnabled(true);
+    ui->detailsTable->setSortingEnabled(true);
+
+
+
+
+    m_servicesRefreshCounter++;
+    if (m_servicesRefreshCounter >= 5) {
+        m_servicesRefreshCounter = 0; 
+        if (ui->tabWidget->currentWidget() == ui->servicesTab) {
+            populateServicesTable();
+        }
+    }
+
+
+    
+    
+  double currentTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
+    m_timeData.append(currentTime);
+    m_cpuData.append(cpuUsagePercent);
+    m_memData.append(memUsagePercent);
+    m_diskData.append(diskActivePercent);
+    m_netSendData.append(sendSpeed / 1000.0); 
+    m_netRecvData.append(recvSpeed / 1000.0);
+
+    while (m_timeData.size() > 60) {
+        m_timeData.removeFirst();
+        m_cpuData.removeFirst();
+        m_memData.removeFirst();
+        m_diskData.removeFirst();
+        m_netSendData.removeFirst();
+        m_netRecvData.removeFirst();
+    }
+    
+    ui->cpuUsageLabel->setText(QString::number(cpuUsagePercent, 'f', 1) + " %");
+    ui->cpuSpeedLabel->setText(QString::fromStdString(parser.getCurrentCpuMhz()));
+    ui->uptimeLabel->setText(QString::fromStdString(parser.getUptime()));
+    ui->processesLabel->setText(QString::number(pids.size()));
+    ui->threadsLabel->setText(QString::number(parser.getTotalThreads()));
+
+    ui->memUsageLabel->setText(QString("%1 / %2")
+        .arg(formatKB(memInfo.memUsed()))
+        .arg(formatKB(memInfo.memTotal)));
+    ui->memAvailableLabel->setText(formatKB(memInfo.memAvailable));
+    ui->memCachedLabel->setText(formatKB(memInfo.cached));
+    ui->swapUsageLabel->setText(QString("%1 / %2")
+        .arg(formatKB(memInfo.swapUsed()))
+        .arg(formatKB(memInfo.swapTotal)));
+
+    ui->diskActiveTimeLabel->setText(QString::number(diskActivePercent, 'f', 0) + " %");
+    ui->diskReadSpeedLabel->setText(formatBytesRate(readSpeed));
+    ui->diskWriteSpeedLabel->setText(formatBytesRate(writeSpeed));
+    ui->diskCapacityLabel->setText(QString("%1 / %2 GB")
+        .arg(fsInfo.used() / (1024.0*1024.0*1024.0), 0, 'f', 1)
+        .arg(fsInfo.total / (1024.0*1024.0*1024.0), 0, 'f', 1));
+
+    ui->netSendLabel->setText(formatBitsRate(sendSpeed));
+    ui->netReceiveLabel->setText(formatBitsRate(recvSpeed));
+
+    int currentIndex = ui->performanceStackedWidget->currentIndex();
+    QCustomPlot* currentGraph = qobject_cast<QCustomPlot*>(ui->performanceStackedWidget->widget(currentIndex)->findChild<QCustomPlot*>());
+    
+    if (currentGraph) {
+        currentGraph->xAxis->setRange(currentTime, 60, Qt::AlignRight);
+        
+        if (currentIndex == 0) { 
+            ui->cpuGraph->graph(0)->setData(m_timeData, m_cpuData);
+            ui->cpuGraph->yAxis->setRange(0, 100);
+        } else if (currentIndex == 1) { 
+            ui->memoryGraph->graph(0)->setData(m_timeData, m_memData);
+            ui->memoryGraph->yAxis->setRange(0, 100);
+        } else if (currentIndex == 2) { 
+            ui->diskGraph->graph(0)->setData(m_timeData, m_diskData);
+            ui->diskGraph->yAxis->setRange(0, 100);
+        } else if (currentIndex == 3) { 
+            ui->ethernetGraph->graph(0)->setData(m_timeData, m_netRecvData);
+            ui->ethernetGraph->graph(1)->setData(m_timeData, m_netSendData);
+            double maxRecv = m_netRecvData.isEmpty() ? 100.0 : *std::max_element(m_netRecvData.constBegin(), m_netRecvData.constEnd());
+            double maxSend = m_netSendData.isEmpty() ? 100.0 : *std::max_element(m_netSendData.constBegin(), m_netSendData.constEnd());
+            double maxSpeed = qMax(100.0, qMax(maxRecv, maxSend)); 
+            ui->ethernetGraph->yAxis->setRange(0, maxSpeed * 1.1); 
+        }
+        
+        currentGraph->replot();
+    }
+
+    prevCpuTimes = currentCpuTimes;
+    prevProcessJiffies = currentProcessJiffies;
+    prevProcessIo = currentProcessIo;
+    m_prevDiskStats = currentDiskStats;
+    m_prevNetStats = currentNetStats;
+    m_prevDiskIOTime = currentDiskStats.timeSpentIO;
 }

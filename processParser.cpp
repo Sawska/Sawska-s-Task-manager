@@ -1,7 +1,9 @@
 #include "headers/processParser.h"
+#include <cmath>
 #include <iostream>
 #include <algorithm>
 #include <map>
+#include <set>
 #include <string>
 #include <fstream>
 #include <stdexcept>
@@ -9,6 +11,7 @@
 #include <iomanip> 
 #include <cctype>
 #include <signal.h>
+#include <sys/statvfs.h>
 
 std::vector<std::string> ProcessParser::readProcessFileSystem(const std::string& filePath) {
     std::vector<std::string> processes;
@@ -322,45 +325,7 @@ std::string formatBytes(long bytes) {
     return ss.str();
 }
 
-std::string ProcessParser::getNetworkStats() {
-    std::stringstream result;
-    std::ifstream netFile("/proc/net/dev");
-    if (!netFile.is_open()) {
-        throw std::runtime_error("Could not open file: /proc/net/dev");
-    }
 
-    std::string line;
-
-    std::getline(netFile, line);
-    std::getline(netFile, line);
-
-    while (std::getline(netFile, line)) {
-        std::stringstream ss(line);
-        std::string interfaceName;
-        long rx_bytes, tx_bytes;
-        long temp;
-
-        ss >> interfaceName;
-        
-
-        if (interfaceName == "lo:") {
-            continue;
-        }
-
-        interfaceName.pop_back();
-
-
-        ss >> rx_bytes;
-        for (int i = 0; i < 7; ++i) ss >> temp; 
-        ss >> tx_bytes;
-        
-
-        result << interfaceName << " - Rx: " << formatBytes(rx_bytes)
-               << ", Tx: " << formatBytes(tx_bytes) << "\n";
-    }
-    
-    return result.str();
-}
 
 bool is_numeric(const std::string& s) {
     if (s.empty()) {
@@ -753,6 +718,216 @@ IoStats ProcessParser::getProcessIoBytes(const std::string& pid) {
             } catch (const std::invalid_argument& e) {
                 stats.writeBytes = 0;
             }
+        }
+    }
+    return stats;
+}
+// std::string ProcessParser::getCurrentCpuMhz() {
+//     std::ifstream stream("/proc/cpuinfo");
+//     if (!stream.is_open()) return "N/A";
+//     std::string line;
+//     while (std::getline(stream, line)) {
+//         if (line.find("cpu MHz") == 0) {
+//             double mhz = std::stod(line.substr(line.find(":") + 2));
+//             double ghz = mhz / 1000.0;
+//             std::stringstream ss;
+//             ss.precision(2);
+//             ss << std::fixed << ghz << " GHz";
+//             return ss.str();
+//         }
+//     }
+//     return "N/A";
+// }
+
+
+// std::string ProcessParser::getUptime() {
+//     std::ifstream stream("/proc/uptime");
+//     if (!stream.is_open()) return "N/A";
+//     double uptimeSeconds;
+//     stream >> uptimeSeconds;
+
+//     int days = uptimeSeconds / (24 * 3600);
+//     uptimeSeconds = fmod(uptimeSeconds, 24 * 3600);
+//     int hours = uptimeSeconds / 3600;
+//     uptimeSeconds = fmod(uptimeSeconds, 3600);
+//     int minutes = uptimeSeconds / 60;
+//     uptimeSeconds = fmod(uptimeSeconds, 60);
+
+//     std::stringstream ss;
+//     ss << days << ":"
+//        << std::setfill('0') << std::setw(2) << hours << ":"
+//        << std::setfill('0') << std::setw(2) << minutes << ":"
+//        << std::setfill('0') << std::setw(2) << (int)uptimeSeconds;
+//     return ss.str();
+// }
+
+int ProcessParser::getCoreCount() {
+    std::ifstream stream("/proc/cpuinfo");
+    if (!stream.is_open()) return 0;
+    std::string line;
+    std::set<std::string> coreIds;
+    std::string currentPhysicalId;
+
+    while (std::getline(stream, line)) {
+        if (line.find("physical id") == 0) {
+            currentPhysicalId = line.substr(line.find(":") + 2);
+        }
+        if (line.find("core id") == 0) {
+            std::string coreId = line.substr(line.find(":") + 2);
+            coreIds.insert(currentPhysicalId + ":" + coreId);
+        }
+    }
+    return coreIds.size() > 0 ? coreIds.size() : 1;
+}
+
+int ProcessParser::getLogicalProcessorCount() {
+    std::ifstream stream("/proc/cpuinfo");
+    if (!stream.is_open()) return 0;
+    std::string line;
+    int count = 0;
+    while (std::getline(stream, line)) {
+        if (line.find("processor") == 0) {
+            count++;
+        }
+    }
+    return count > 0 ? count : 1;
+}
+
+int ProcessParser::getTotalThreads() {
+    int totalThreads = 0;
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
+            if (entry.is_directory()) {
+                std::string pid = entry.path().filename().string();
+                if (std::all_of(pid.begin(), pid.end(), ::isdigit)) {
+                    std::ifstream stream(entry.path().string() + "/status");
+                    std::string line;
+                    while (std::getline(stream, line)) {
+                        if (line.find("Threads:") == 0) {
+                            totalThreads += std::stoi(line.substr(line.find(":") + 1));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    } catch (const std::filesystem::filesystem_error& e) {
+    }
+    return totalThreads;
+}
+
+
+long getMemInfoValue(std::ifstream& stream, const std::string& key) {
+    stream.clear();
+    stream.seekg(0);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.find(key) == 0) {
+            try {
+                return std::stol(line.substr(line.find(":") + 1));
+            } catch (...) {
+                return 0;
+            }
+        }
+    }
+    return 0;
+}
+
+MemInfo ProcessParser::getMemoryStats() {
+    MemInfo info;
+    std::ifstream stream("/proc/meminfo");
+    if (!stream.is_open()) return info;
+
+    info.memTotal = getMemInfoValue(stream, "MemTotal:");
+    info.memFree = getMemInfoValue(stream, "MemFree:");
+    info.memAvailable = getMemInfoValue(stream, "MemAvailable:");
+    info.buffers = getMemInfoValue(stream, "Buffers:");
+    info.cached = getMemInfoValue(stream, "Cached:");
+    info.swapTotal = getMemInfoValue(stream, "SwapTotal:");
+    info.swapFree = getMemInfoValue(stream, "SwapFree:");
+
+    return info;
+}
+
+FsInfo ProcessParser::getFilesystemStats(const std::string& path) {
+    FsInfo info;
+    struct statvfs stat;
+    if (statvfs(path.c_str(), &stat) != 0) {
+        return info; 
+    }
+    info.total = stat.f_blocks * stat.f_frsize;
+    info.free = stat.f_bavail * stat.f_frsize;
+    return info;
+}
+
+std::string ProcessParser::getPrimaryDiskName() {
+    std::ifstream stream("/proc/mounts");
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::stringstream ss(line);
+        std::string device, mountPoint;
+        ss >> device >> mountPoint;
+        if (mountPoint == "/") {
+            if (device.find("/dev/") == 0) {
+                return device.substr(5); 
+            }
+            return device;
+        }
+    }
+    return "sda"; 
+}
+
+DiskStats ProcessParser::getDiskStats() {
+    DiskStats stats;
+    std::string primaryDisk = getPrimaryDiskName();
+    primaryDisk.erase(std::remove_if(primaryDisk.begin(), primaryDisk.end(), ::isdigit), primaryDisk.end());
+
+    std::ifstream stream("/proc/diskstats");
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::stringstream ss(line);
+        std::string name;
+        ss >> name >> name >> name; 
+        if (name == primaryDisk) {
+            ss >> stats.sectorsRead;
+            ss >> name >> name; 
+            ss >> stats.sectorsWritten;
+            ss >> name >> name; 
+            ss >> stats.timeSpentIO;
+            break;
+        }
+    }
+    return stats;
+}
+
+std::string ProcessParser::getPrimaryNetworkInterface() {
+    std::ifstream stream("/proc/net/route");
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::stringstream ss(line);
+        std::string iface, dest;
+        ss >> iface >> dest;
+        if (dest == "00000000") { 
+             return iface;
+        }
+    }
+    return "eth0"; 
+}
+
+NetStats ProcessParser::getNetworkStats() {
+    NetStats stats;
+    std::string iface = getPrimaryNetworkInterface();
+    std::ifstream stream("/proc/net/dev");
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.find(iface) != std::string::npos) {
+            std::stringstream ss(line);
+            std::string name;
+            ss >> name; 
+            ss >> stats.bytesReceived;
+            for (int i = 0; i < 7; ++i) ss >> line; // Skip
+            ss >> stats.bytesSent;
+            break;
         }
     }
     return stats;

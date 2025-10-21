@@ -16,15 +16,22 @@ std::string ServiceManager::executeCommand(const std::string& cmd) {
 
 std::vector<ServiceInfo> ServiceManager::listServices() {
     std::vector<ServiceInfo> services;
-    std::string output = executeCommand("systemctl list-units --type=service --no-pager --plain");
+    std::string output = executeCommand("systemctl list-units --type=service --all --no-pager --plain");
     
     std::stringstream ss(output);
     std::string line;
+    
     std::getline(ss, line); 
 
     while (std::getline(ss, line)) {
-        if (line.empty() || line.find("UNIT") != std::string::npos) continue;
         
+        if (line.empty()) {
+            break; 
+        }
+        
+        if (line.find("●") == std::string::npos && line.find_first_not_of(' ') == std::string::npos) {
+        }
+
         ServiceInfo info;
         std::stringstream lineStream(line);
         std::string subState;
@@ -33,13 +40,16 @@ std::vector<ServiceInfo> ServiceManager::listServices() {
         
         std::string description;
         std::getline(lineStream, description);
-        if (!description.empty()) {
-            size_t firstChar = description.find_first_not_of(' ');
-            if (firstChar != std::string::npos) {
-                info.description = description.substr(firstChar);
-            }
+        
+        size_t firstChar = description.find_first_not_of(' ');
+        if (firstChar != std::string::npos) {
+            info.description = description.substr(firstChar);
+        } else {
+            info.description = ""; 
         }
-        services.push_back(info);
+        if (!info.name.empty()) {
+            services.push_back(info);
+        }
     }
     return services;
 }

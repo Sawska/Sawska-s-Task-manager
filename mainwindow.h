@@ -8,6 +8,8 @@
 #include "headers/StartupManager.h"
 #include "headers/ServiceManager.h"
 #include <QMessageBox>
+#include "headers/qcustomplot.h" 
+#include <QVector>
 
 
 
@@ -41,6 +43,9 @@ private slots:
     void on_openServicesButton_clicked();
     void on_deleteHistoryButton_clicked();
 
+    void on_performanceList_currentRowChanged(int row);
+
+
     void refreshStats();
 private:
     Ui::MainWindow *ui;
@@ -60,5 +65,19 @@ private:
     void populateServicesTable();
     void populateAppHistoryTable();
 
+    DiskStats m_prevDiskStats;
+    NetStats m_prevNetStats;
+    long m_prevDiskIOTime;
+
+    QVector<double> m_timeData;
+    QVector<double> m_cpuData;
+    QVector<double> m_memData;
+    QVector<double> m_diskData;
+    QVector<double> m_netSendData;
+    QVector<double> m_netRecvData;
+
+
+    void setupPerformanceTab();
+    void setupGraph(QCustomPlot* graph, const QColor& color, bool twoLines = false);
 };
 #endif // MAINWINDOW_H

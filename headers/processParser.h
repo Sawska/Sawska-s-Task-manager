@@ -6,7 +6,7 @@
 #include <fstream>
 #include <vector>
 #include <filesystem>
-
+#include <map>
 
 class CpuTimes {
 public:
@@ -41,11 +41,39 @@ struct ProcessInfo {
     long memoryKb = 0;
 };
 
+struct MemInfo {
+    long memTotal = 0;
+    long memFree = 0;
+    long memAvailable = 0;
+    long buffers = 0;
+    long cached = 0;
+    long swapTotal = 0;
+    long swapFree = 0;
+    
+    long memUsed() const { return memTotal - memAvailable; }
+    long swapUsed() const { return swapTotal - swapFree; }
+};
+
+struct DiskStats {
+    long sectorsRead = 0;
+    long sectorsWritten = 0;
+    long timeSpentIO = 0;
+};
+
+struct NetStats {
+    long bytesReceived = 0;
+    long bytesSent = 0;
+};
+
+struct FsInfo {
+    long total = 0;
+    long free = 0;
+    long used() const { return total - free; }
+};
 
 class ProcessParser {
     public:
      std::string getProcessorSpecs();
-    // private:
     ProcessParser() = default;
     ~ProcessParser() = default;
 
@@ -68,7 +96,7 @@ class ProcessParser {
     std::string getSwapInfo();
 
 
-    std::string getNetworkStats();
+    NetStats getNetworkStats();
     
     std::vector<std::string> getPids();
 
@@ -103,6 +131,17 @@ class ProcessParser {
 
     IoStats getProcessIoBytes(const std::string& pid);
 
+    int getCoreCount();
+    int getLogicalProcessorCount();
+    int getTotalThreads();
+    
+    MemInfo getMemoryStats();
+    FsInfo getFilesystemStats(const std::string& path);
+    
+    DiskStats getDiskStats();
+    // NetStats getNetworkStats(); 
+    std::string getPrimaryDiskName();
+    std::string getPrimaryNetworkInterface();
 };
 
 
