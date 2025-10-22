@@ -60,6 +60,8 @@ private:
     std::map<std::string, long> prevProcessJiffies;
     std::map<std::string, IoStats> prevProcessIo;
 
+    AmdGpuInfo m_currentGpuStats;
+
     ServiceManager m_serviceManager;
     int m_servicesRefreshCounter;     
     void populateServicesTable();

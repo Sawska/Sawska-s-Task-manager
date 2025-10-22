@@ -130,6 +130,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_prevDiskStats = parser.getDiskStats();
     m_prevNetStats = parser.getNetworkStats();
     m_prevDiskIOTime = m_prevDiskStats.timeSpentIO;
+
+    m_currentGpuStats = parser.getAmdGpuStats();
     
     refreshStats();
     processTimer->start(1000);
@@ -243,147 +245,6 @@ void MainWindow::on_disableStartupButton_clicked()
     }
 }
 
-
-
-// void MainWindow::refreshStats()
-// {
-//     CpuTimes currentCpuTimes = parser.getCpuTimes();
-//     long deltaTotal = currentCpuTimes.totalTime() - prevCpuTimes.totalTime();
-    
-//     double timeIntervalSec = processTimer->interval() / 1000.0;
-//     if (timeIntervalSec == 0) timeIntervalSec = 1.0; 
-
-//     std::map<std::string, long> currentProcessJiffies;
-//     std::map<std::string, IoStats> currentProcessIo;
-    
-//     QMap<QString, long> userMemoryMap;
-//     QMap<QString, double> userCpuMap;
-//     QMap<QString, double> userDiskReadMap; 
-//     QMap<QString, double> userDiskWriteMap;
-
-//     ui->processTable->setSortingEnabled(false);
-//     ui->processTable->setRowCount(0); 
-//     ui->usersTreeWidget->clear();
-
-
-//     std::vector<std::string> pids = parser.getPids();
-//     for (const std::string& pid_std : pids) 
-//     {
-//         ProcessInfo info = parser.getProcessInfo(pid_std);
-        
-//         long currentJiffies = parser.getProcessActiveJiffies(pid_std);
-//         currentProcessJiffies[pid_std] = currentJiffies;
-//         long prevJiffies = 0;
-//         auto it = prevProcessJiffies.find(pid_std);
-//         if (it != prevProcessJiffies.end()) prevJiffies = it->second;
-//         long deltaProc = currentJiffies - prevJiffies;
-//         double cpuPercent = 0.0;
-//         if (deltaTotal > 0) {
-//             cpuPercent = (static_cast<double>(deltaProc) / static_cast<double>(deltaTotal)) * 100.0;
-//         }
-
-//         IoStats currentIo = parser.getProcessIoBytes(pid_std);
-//         currentProcessIo[pid_std] = currentIo;
-//         IoStats prevIo;
-//         auto io_it = prevProcessIo.find(pid_std);
-//         if (io_it != prevProcessIo.end()) prevIo = io_it->second;
-
-//         double readRate = (static_cast<double>(currentIo.readBytes - prevIo.readBytes)) / timeIntervalSec;
-//         double writeRate = (static_cast<double>(currentIo.writeBytes - prevIo.writeBytes)) / timeIntervalSec;
-
-//         int row = ui->processTable->rowCount();
-//         ui->processTable->insertRow(row);
-        
-//         bool ok;
-//         QTableWidgetItem *nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
-//         QTableWidgetItem *pidItem = new QTableWidgetItem();
-//         qlonglong pidNum = QString::fromStdString(info.pid).toLongLong(&ok);
-//         if (ok) pidItem->setData(Qt::DisplayRole, pidNum);
-//         else pidItem->setText(QString::fromStdString(info.pid)); 
-        
-//         QTableWidgetItem *cpuItem = new QTableWidgetItem();
-//         cpuItem->setData(Qt::DisplayRole, cpuPercent); 
-
-//         QTableWidgetItem *memItem = new QTableWidgetItem();
-//         memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
-        
-//         QTableWidgetItem *userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
-
-//         ui->processTable->setItem(row, 0, nameItem);
-//         ui->processTable->setItem(row, 1, pidItem);
-//         ui->processTable->setItem(row, 2, cpuItem);
-//         ui->processTable->setItem(row, 3, memItem);
-//         ui->processTable->setItem(row, 4, userItem);
-
-//         QString user = QString::fromStdString(info.owner);
-//         userMemoryMap[user] += info.memoryKb;
-//         userCpuMap[user] += cpuPercent;
-//         userDiskReadMap[user] += readRate;
-//         userDiskWriteMap[user] += writeRate;
-
-//         int detailsRow = ui->detailsTable->rowCount();
-//         ui->detailsTable->insertRow(detailsRow);
-        
-//         QTableWidgetItem *d_nameItem = new QTableWidgetItem(QString::fromStdString(info.name));
-        
-//         QTableWidgetItem *d_pidItem = new QTableWidgetItem();
-//         d_pidItem->setData(Qt::DisplayRole, pidNum);
-        
-//         QTableWidgetItem *d_statusItem = new QTableWidgetItem(QString::fromStdString(info.state));
-//         QTableWidgetItem *d_userItem = new QTableWidgetItem(QString::fromStdString(info.owner));
-        
-//         QTableWidgetItem *d_cpuItem = new QTableWidgetItem();
-//         d_cpuItem->setData(Qt::DisplayRole, cpuPercent);
-        
-//         QTableWidgetItem *d_memItem = new QTableWidgetItem();
-//         d_memItem->setData(Qt::DisplayRole, static_cast<qlonglong>(info.memoryKb));
-
-//         ui->detailsTable->setItem(detailsRow, 0, d_nameItem);
-//         ui->detailsTable->setItem(detailsRow, 1, d_pidItem);
-//         ui->detailsTable->setItem(detailsRow, 2, d_statusItem);
-//         ui->detailsTable->setItem(detailsRow, 3, d_userItem);
-//         ui->detailsTable->setItem(detailsRow, 4, d_cpuItem);
-//         ui->detailsTable->setItem(detailsRow, 5, d_memItem);
-//     }
-
-//     prevCpuTimes = currentCpuTimes;
-//     prevProcessJiffies = currentProcessJiffies;
-//     prevProcessIo = currentProcessIo; 
-
-//     for (auto it = userMemoryMap.constBegin(); it != userMemoryMap.constEnd(); ++it) {
-//         QString user = it.key();
-//         long memoryKb = it.value();
-//         double cpu = userCpuMap.value(user, 0.0);
-//         double diskRead = userDiskReadMap.value(user, 0.0);
-//         double diskWrite = userDiskWriteMap.value(user, 0.0);
-
-//         QTreeWidgetItem *item = new QTreeWidgetItem(ui->usersTreeWidget);
-        
-//         QString diskString = QString("R: %1 | W: %2")
-//                                  .arg(formatBytesRate(diskRead))
-//                                  .arg(formatBytesRate(diskWrite));
-
-//         item->setText(0, user);
-//         item->setData(1, Qt::DisplayRole, cpu);
-//         item->setData(2, Qt::DisplayRole, static_cast<qlonglong>(memoryKb)); 
-//         item->setText(3, diskString); 
-//         item->setText(4, "N/A");      
-//     }
-
-//     ui->processTable->setSortingEnabled(true);
-
-//     ui->detailsTable->setSortingEnabled(true);
-
-
-//     m_servicesRefreshCounter++;
-    
-//     if (m_servicesRefreshCounter >= 5) {
-//         m_servicesRefreshCounter = 0;
-//         if (ui->tabWidget->currentWidget() == ui->servicesTab) {
-//             populateServicesTable();
-//         }
-//     }
-// }
 
 void MainWindow::populateStartupTable()
 {
@@ -884,9 +745,29 @@ void MainWindow::refreshStats()
             populateServicesTable();
         }
     }
+    
+  m_currentGpuStats = parser.getAmdGpuStats(); 
+    
+    QString gpuNameText = QString::fromStdString(m_currentGpuStats.deviceName);
+    QString gpuVendor = QString::fromStdString(m_currentGpuStats.vendor);
 
+    if (gpuNameText == "N/A" || gpuNameText.isEmpty()) {
+        ui->gpuNameLabel->setText("GPU: Detection Failed or N/A");
+    } else {
+        ui->gpuNameLabel->setText(gpuNameText + (gpuVendor != "N/A" ? " (" + gpuVendor + ")" : ""));
+    }
 
     
+    ui->gpuUsageLabel->setText(QString::fromStdString(m_currentGpuStats.gpuUsage));
+    ui->gpuTempLabel->setText(QString::fromStdString(m_currentGpuStats.gpuTemp));
+    
+    QString vramText = QString("%1 / %2")
+        .arg(QString::fromStdString(m_currentGpuStats.vramUsed))
+        .arg(QString::fromStdString(m_currentGpuStats.vramTotal));
+    ui->gpuVramLabel->setText(vramText);
+    
+    ui->gpuFanLabel->setText(QString::fromStdString(m_currentGpuStats.fanSpeed));
+    ui->gpuPowerLabel->setText(QString::fromStdString(m_currentGpuStats.powerUsage));
     
   double currentTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
     m_timeData.append(currentTime);

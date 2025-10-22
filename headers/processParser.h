@@ -71,6 +71,17 @@ struct FsInfo {
     long used() const { return total - free; }
 };
 
+struct AmdGpuInfo {
+    std::string deviceName;
+    std::string vendor;
+    std::string vramTotal;
+    std::string vramUsed;
+    std::string gpuTemp;
+    std::string fanSpeed;
+    std::string gpuUsage; 
+    std::string powerUsage;
+};
+
 class ProcessParser {
     public:
      std::string getProcessorSpecs();
@@ -139,7 +150,13 @@ class ProcessParser {
     FsInfo getFilesystemStats(const std::string& path);
     
     DiskStats getDiskStats();
-    // NetStats getNetworkStats(); 
+
+    AmdGpuInfo getAmdGpuStats();
+
+    bool isRocmSmiAvailable();
+
+    std::string formatAmdGpuInfoToJson(const AmdGpuInfo& info);
+
     std::string getPrimaryDiskName();
     std::string getPrimaryNetworkInterface();
 };

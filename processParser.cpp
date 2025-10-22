@@ -1,5 +1,4 @@
 #include "headers/processParser.h"
-#include <cmath>
 #include <iostream>
 #include <algorithm>
 #include <map>
@@ -925,10 +924,116 @@ NetStats ProcessParser::getNetworkStats() {
             std::string name;
             ss >> name; 
             ss >> stats.bytesReceived;
-            for (int i = 0; i < 7; ++i) ss >> line; // Skip
+            for (int i = 0; i < 7; ++i) ss >> line; 
             ss >> stats.bytesSent;
             break;
         }
     }
     return stats;
+}
+
+
+bool ProcessParser::isRocmSmiAvailable() {
+    std::string result = executeCommand("which rocm-smi 2>/dev/null");
+    trim(result);
+    return !result.empty();
+}
+
+
+AmdGpuInfo ProcessParser::getAmdGpuStats() {
+    AmdGpuInfo info;
+    info.deviceName = "N/A";
+    info.vendor = "AMD";
+    info.vramTotal = "N/A";
+    info.vramUsed = "N/A";
+    info.gpuTemp = "N/A";
+    info.fanSpeed = "N/A";
+    info.gpuUsage = "N/A";
+    info.powerUsage = "N/A";
+
+    if (isRocmSmiAvailable()) {
+        std::string command = "rocm-smi --showid --showvramtotal --showvram --showtemp --showfan --showuse --showpower --csv | tail -n 1";
+        std::string output = executeCommand(command);
+        trim(output);
+
+        if (!output.empty()) {
+            std::stringstream ss(output);
+            std::string segment;
+            std::vector<std::string> parts;
+            
+            
+            while (std::getline(ss, segment, ',')) {
+                trim(segment);
+                parts.push_back(segment);
+            }
+
+            if (parts.size() >= 8) { 
+                info.deviceName = parts[1];
+                info.vramTotal = parts[2]; 
+                info.vramUsed = parts[3]; 
+                info.gpuTemp = parts[4];  
+                info.fanSpeed = parts[5];  
+                info.gpuUsage = parts[6];  
+                info.powerUsage = parts[7]; 
+            }
+        }
+    } else {
+        try {
+            std::string drmPath = "/sys/class/drm/";
+            for (const auto& entry : std::filesystem::directory_iterator(drmPath)) {
+                std::string filename = entry.path().filename().string();
+                if (filename.rfind("card", 0) == 0 && std::all_of(filename.begin() + 4, filename.end(), ::isdigit)) {
+                    std::ifstream deviceFile(entry.path().string() + "/device/uevent");
+                    std::string line;
+                    while (std::getline(deviceFile, line)) {
+                        if (line.find("DRIVER=amdgpu") != std::string::npos) {
+                            std::ifstream nameFile(entry.path().string() + "/device/vendor");
+                            std::string vendorID;
+                            if (std::getline(nameFile, vendorID) && vendorID == "0x1002") { 
+                                info.vendor = "AMD";
+                                
+                                std::ifstream vramTotalFile(entry.path().string() + "/device/mem_info_vram_total");
+                                long totalBytes = 0;
+                                if (vramTotalFile >> totalBytes) {
+                                    info.vramTotal = formatBytes(totalBytes);
+                                }
+                                
+                                std::ifstream vramUsedFile(entry.path().string() + "/device/mem_info_vram_used");
+                                long usedBytes = 0;
+                                if (vramUsedFile >> usedBytes) {
+                                    info.vramUsed = formatBytes(usedBytes);
+                                }
+                                
+                                std::ifstream nameFile2(entry.path().string() + "/device/modalias");
+                                std::string modalias;
+                                if (std::getline(nameFile2, modalias)) {
+                                    info.deviceName = modalias;
+                                }
+                                
+                                break; 
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (const std::filesystem::filesystem_error& e) {
+             info.deviceName = "Error reading sysfs";
+        }
+    }
+
+    return info;
+}
+
+std::string ProcessParser::formatAmdGpuInfoToJson(const AmdGpuInfo& info) {
+    std::string jsonOutput = "{\n";
+    jsonOutput += "  \"device_name\": \"" + info.deviceName + "\",\n";
+    jsonOutput += "  \"vendor\": \"" + info.vendor + "\",\n";
+    jsonOutput += "  \"vram_total\": \"" + info.vramTotal + "\",\n";
+    jsonOutput += "  \"vram_used\": \"" + info.vramUsed + "\",\n";
+    jsonOutput += "  \"gpu_temp\": \"" + info.gpuTemp + "\",\n";
+    jsonOutput += "  \"fan_speed\": \"" + info.fanSpeed + "\",\n";
+    jsonOutput += "  \"gpu_usage\": \"" + info.gpuUsage + "\",\n";
+    jsonOutput += "  \"power_usage\": \"" + info.powerUsage + "\"\n";
+    jsonOutput += "}";
+    return jsonOutput;
 }
