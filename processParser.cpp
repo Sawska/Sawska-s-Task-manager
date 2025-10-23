@@ -721,44 +721,6 @@ IoStats ProcessParser::getProcessIoBytes(const std::string& pid) {
     }
     return stats;
 }
-// std::string ProcessParser::getCurrentCpuMhz() {
-//     std::ifstream stream("/proc/cpuinfo");
-//     if (!stream.is_open()) return "N/A";
-//     std::string line;
-//     while (std::getline(stream, line)) {
-//         if (line.find("cpu MHz") == 0) {
-//             double mhz = std::stod(line.substr(line.find(":") + 2));
-//             double ghz = mhz / 1000.0;
-//             std::stringstream ss;
-//             ss.precision(2);
-//             ss << std::fixed << ghz << " GHz";
-//             return ss.str();
-//         }
-//     }
-//     return "N/A";
-// }
-
-
-// std::string ProcessParser::getUptime() {
-//     std::ifstream stream("/proc/uptime");
-//     if (!stream.is_open()) return "N/A";
-//     double uptimeSeconds;
-//     stream >> uptimeSeconds;
-
-//     int days = uptimeSeconds / (24 * 3600);
-//     uptimeSeconds = fmod(uptimeSeconds, 24 * 3600);
-//     int hours = uptimeSeconds / 3600;
-//     uptimeSeconds = fmod(uptimeSeconds, 3600);
-//     int minutes = uptimeSeconds / 60;
-//     uptimeSeconds = fmod(uptimeSeconds, 60);
-
-//     std::stringstream ss;
-//     ss << days << ":"
-//        << std::setfill('0') << std::setw(2) << hours << ":"
-//        << std::setfill('0') << std::setw(2) << minutes << ":"
-//        << std::setfill('0') << std::setw(2) << (int)uptimeSeconds;
-//     return ss.str();
-// }
 
 int ProcessParser::getCoreCount() {
     std::ifstream stream("/proc/cpuinfo");
@@ -1036,4 +998,33 @@ std::string ProcessParser::formatAmdGpuInfoToJson(const AmdGpuInfo& info) {
     jsonOutput += "  \"power_usage\": \"" + info.powerUsage + "\"\n";
     jsonOutput += "}";
     return jsonOutput;
+}
+
+
+std::vector<std::string> ProcessParser::getMountedPartitions() {
+    std::set<std::string> partitions_set;
+    std::ifstream mountsFile("/proc/mounts");
+    
+    if (!mountsFile.is_open()) {
+        return {"/"};
+    }
+
+    std::string line;
+    while (std::getline(mountsFile, line)) {
+        std::stringstream ss(line);
+        std::string device, mountPoint, fsType;
+        ss >> device >> mountPoint >> fsType;
+
+        if (device.rfind("/dev/", 0) == 0 && 
+            fsType != "squashfs" && 
+            fsType != "tmpfs") 
+        {
+            partitions_set.insert(mountPoint);
+        }
+    }
+
+    partitions_set.insert("/"); 
+    
+    std::vector<std::string> partitions(partitions_set.begin(), partitions_set.end());
+    return partitions;
 }

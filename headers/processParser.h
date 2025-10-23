@@ -159,6 +159,8 @@ class ProcessParser {
 
     std::string getPrimaryDiskName();
     std::string getPrimaryNetworkInterface();
+
+    std::vector<std::string> getMountedPartitions();
 };
 
 
