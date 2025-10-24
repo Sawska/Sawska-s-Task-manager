@@ -78,6 +78,8 @@ private:
     QVector<double> m_netSendData;
     QVector<double> m_netRecvData;
 
+    QVector<double> m_gpuUsageData;
+
 
     void setupPerformanceTab();
     void setupGraph(QCustomPlot* graph, const QColor& color, bool twoLines = false);

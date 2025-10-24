@@ -755,6 +755,15 @@
        </layout>
       </item>
       <item>
+       <widget class="QCustomPlot" name="gpuGraph">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>1</verstretch> </sizepolicy>
+        </property>
+       </widget>
+      </item>
+      <item>
        <spacer name="verticalSpacer_5">
         <property name="orientation">
          <enum>Qt::Vertical</enum>

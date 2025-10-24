@@ -580,6 +580,8 @@ void MainWindow::setupPerformanceTab()
     setupGraph(ui->memoryGraph, Qt::magenta);
     setupGraph(ui->diskGraph, Qt::green);
     setupGraph(ui->ethernetGraph, Qt::cyan, true);
+
+    setupGraph(ui->gpuGraph, QColor(220, 50, 50));
     
     ui->performanceList->setCurrentRow(0);
 }
@@ -747,6 +749,21 @@ void MainWindow::refreshStats()
     }
     
   m_currentGpuStats = parser.getAmdGpuStats(); 
+
+  std::string usageStr = m_currentGpuStats.gpuUsage;
+    double gpuUsagePercent = 0.0;
+    try {
+        size_t pos;
+        pos = usageStr.find(" ");
+        if (pos != std::string::npos) {
+            usageStr = usageStr.substr(0, pos); 
+        }
+        gpuUsagePercent = std::stod(usageStr);
+    } catch (const std::exception& e) {
+        gpuUsagePercent = 0.0; 
+    }
+
+    ui->gpuUsageLabel->setText(QString::fromStdString(m_currentGpuStats.gpuUsage));
     
     QString gpuNameText = QString::fromStdString(m_currentGpuStats.deviceName);
     QString gpuVendor = QString::fromStdString(m_currentGpuStats.vendor);
@@ -836,6 +853,13 @@ void MainWindow::refreshStats()
         }
         
         currentGraph->replot();
+    }
+
+    if (ui->tabWidget->currentWidget() == ui->gpuPage) {
+        ui->gpuGraph->xAxis->setRange(currentTime, 60, Qt::AlignRight);
+        ui->gpuGraph->graph(0)->setData(m_timeData, m_gpuUsageData);
+        ui->gpuGraph->yAxis->setRange(0, 100);
+        ui->gpuGraph->replot();
     }
 
     prevCpuTimes = currentCpuTimes;
