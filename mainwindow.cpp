@@ -794,6 +794,9 @@ void MainWindow::refreshStats()
     m_netSendData.append(sendSpeed / 1000.0); 
     m_netRecvData.append(recvSpeed / 1000.0);
 
+
+    m_gpuUsageData.append(gpuUsagePercent);
+
     while (m_timeData.size() > 60) {
         m_timeData.removeFirst();
         m_cpuData.removeFirst();
@@ -801,6 +804,7 @@ void MainWindow::refreshStats()
         m_diskData.removeFirst();
         m_netSendData.removeFirst();
         m_netRecvData.removeFirst();
+        m_gpuUsageData.removeFirst();
     }
     
     ui->cpuUsageLabel->setText(QString::number(cpuUsagePercent, 'f', 1) + " %");

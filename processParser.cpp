@@ -913,30 +913,42 @@ AmdGpuInfo ProcessParser::getAmdGpuStats() {
     info.gpuUsage = "N/A";
     info.powerUsage = "N/A";
 
-    if (isRocmSmiAvailable()) {
-        std::string command = "rocm-smi --showid --showvramtotal --showvram --showtemp --showfan --showuse --showpower --csv | tail -n 1";
+   if (isRocmSmiAvailable()) {
+        std::string command = "rocm-smi --showid --showmeminfo vram --showtemp --showfan --showuse --showpower --csv";
         std::string output = executeCommand(command);
-        trim(output);
+        trim(output); 
 
         if (!output.empty()) {
-            std::stringstream ss(output);
-            std::string segment;
-            std::vector<std::string> parts;
-            
-            
-            while (std::getline(ss, segment, ',')) {
-                trim(segment);
-                parts.push_back(segment);
+            std::string lastLine;
+
+            std::stringstream lineStream(output);
+            std::string currentLine;
+            while (std::getline(lineStream, currentLine)) {
+                trim(currentLine);
+                if (!currentLine.empty()) {
+                    lastLine = currentLine;
+                }
             }
 
-            if (parts.size() >= 8) { 
-                info.deviceName = parts[1];
-                info.vramTotal = parts[2]; 
-                info.vramUsed = parts[3]; 
-                info.gpuTemp = parts[4];  
-                info.fanSpeed = parts[5];  
-                info.gpuUsage = parts[6];  
-                info.powerUsage = parts[7]; 
+            if (!lastLine.empty()) {
+                std::stringstream ss(lastLine);
+                std::string segment;
+                std::vector<std::string> parts;
+                
+                while (std::getline(ss, segment, ',')) {
+                    trim(segment);
+                    parts.push_back(segment);
+                }
+
+                if (parts.size() >= 14) { 
+                    info.deviceName = parts[1];
+                    info.vramTotal = parts[12];
+                    info.vramUsed = parts[13];
+                    info.gpuTemp = parts[6];
+                    info.fanSpeed = parts[8];  
+                    info.gpuUsage = parts[11];
+                    info.powerUsage = parts[10];
+                }
             }
         }
     } else {
