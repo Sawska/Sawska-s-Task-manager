@@ -56,6 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+ui->tabWidget->setCurrentIndex(0);
 
     ui->processTable->setColumnWidth(0, 250);
     ui->processTable->setColumnWidth(1, 80); 
@@ -135,6 +136,8 @@ MainWindow::MainWindow(QWidget *parent)
     
     refreshStats();
     processTimer->start(1000);
+
+
 }
 
 MainWindow::~MainWindow()
@@ -763,7 +766,6 @@ void MainWindow::refreshStats()
         gpuUsagePercent = 0.0; 
     }
 
-    ui->gpuUsageLabel->setText(QString::fromStdString(m_currentGpuStats.gpuUsage));
     
     QString gpuNameText = QString::fromStdString(m_currentGpuStats.deviceName);
     QString gpuVendor = QString::fromStdString(m_currentGpuStats.vendor);
@@ -775,16 +777,19 @@ void MainWindow::refreshStats()
     }
 
     
-    ui->gpuUsageLabel->setText(QString::fromStdString(m_currentGpuStats.gpuUsage));
-    ui->gpuTempLabel->setText(QString::fromStdString(m_currentGpuStats.gpuTemp));
+    ui->gpuUsageLabel->setText(QString("%1 %").arg(gpuUsagePercent, 0, 'f', 1));
+    QString temp = QString::fromStdString(m_currentGpuStats.gpuTemp);
+    ui->gpuTempLabel->setText(QString("%1 °C").arg(temp));
     
     QString vramText = QString("%1 / %2")
         .arg(QString::fromStdString(m_currentGpuStats.vramUsed))
-        .arg(QString::fromStdString(m_currentGpuStats.vramTotal));
-    ui->gpuVramLabel->setText(vramText);
+        .arg(QString::fromStdString(m_currentGpuStats.vramTotal)); 
+    ui->gpuVramLabel->setText(QString("%1 MB").arg(vramText));
     
-    ui->gpuFanLabel->setText(QString::fromStdString(m_currentGpuStats.fanSpeed));
-    ui->gpuPowerLabel->setText(QString::fromStdString(m_currentGpuStats.powerUsage));
+    QString fan = QString::fromStdString(m_currentGpuStats.fanSpeed);
+    ui->gpuFanLabel->setText(QString("%1 RPM").arg(fan));
+    QString power = QString::fromStdString(m_currentGpuStats.powerUsage);
+ui->gpuPowerLabel->setText(QString("%1 W").arg(power));
     
   double currentTime = QDateTime::currentDateTime().toMSecsSinceEpoch() / 1000.0;
     m_timeData.append(currentTime);
@@ -813,21 +818,24 @@ void MainWindow::refreshStats()
     ui->processesLabel->setText(QString::number(pids.size()));
     ui->threadsLabel->setText(QString::number(parser.getTotalThreads()));
 
-    ui->memUsageLabel->setText(QString("%1 / %2")
-        .arg(formatKB(memInfo.memUsed()))
-        .arg(formatKB(memInfo.memTotal)));
-    ui->memAvailableLabel->setText(formatKB(memInfo.memAvailable));
-    ui->memCachedLabel->setText(formatKB(memInfo.cached));
-    ui->swapUsageLabel->setText(QString("%1 / %2")
-        .arg(formatKB(memInfo.swapUsed()))
-        .arg(formatKB(memInfo.swapTotal)));
 
-    ui->diskActiveTimeLabel->setText(QString::number(diskActivePercent, 'f', 0) + " %");
-    ui->diskReadSpeedLabel->setText(formatBytesRate(readSpeed));
-    ui->diskWriteSpeedLabel->setText(formatBytesRate(writeSpeed));
-    ui->diskCapacityLabel->setText(QString("%1 / %2 GB")
-        .arg(fsInfo.used() / (1024.0*1024.0*1024.0), 0, 'f', 1)
-        .arg(fsInfo.total / (1024.0*1024.0*1024.0), 0, 'f', 1));
+long memUsed = memInfo.memTotal - memInfo.memAvailable;
+
+ui->memUsageLabel->setText(QString("%1 / %2")
+    .arg(formatKB(memUsed).trimmed())    
+    .arg(formatKB(memInfo.memTotal).trimmed())); 
+
+ui->memUsedValueLabel->setText(formatKB(memUsed).trimmed());
+ui->memAvailableLabel->setText(formatKB(memInfo.memAvailable).trimmed());
+ui->memCachedLabel->setText(formatKB(memInfo.cached).trimmed());
+
+long swapUsed = memInfo.swapTotal - memInfo.swapFree;
+
+ui->swapUsageLabel->setText(QString("%1 / %2")
+    .arg(formatKB(swapUsed).trimmed())
+    .arg(formatKB(memInfo.swapTotal).trimmed()));
+
+
 
     ui->netSendLabel->setText(formatBitsRate(sendSpeed));
     ui->netReceiveLabel->setText(formatBitsRate(recvSpeed));
@@ -854,6 +862,9 @@ void MainWindow::refreshStats()
             double maxSend = m_netSendData.isEmpty() ? 100.0 : *std::max_element(m_netSendData.constBegin(), m_netSendData.constEnd());
             double maxSpeed = qMax(100.0, qMax(maxRecv, maxSend)); 
             ui->ethernetGraph->yAxis->setRange(0, maxSpeed * 1.1); 
+        } else if(currentIndex == 4) {
+            ui->gpuGraph->graph(0)->setData(m_timeData, m_gpuUsageData);
+            ui->gpuGraph->yAxis->setRange(0, 100);
         }
         
         currentGraph->replot();

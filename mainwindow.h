@@ -80,6 +80,10 @@ private:
 
     QVector<double> m_gpuUsageData;
 
+    long m_lastReadBytes = 0;
+    long m_lastWriteBytes = 0;
+    QElapsedTimer m_diskTimer; 
+
 
     void setupPerformanceTab();
     void setupGraph(QCustomPlot* graph, const QColor& color, bool twoLines = false);
