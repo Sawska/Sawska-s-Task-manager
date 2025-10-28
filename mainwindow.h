@@ -54,8 +54,23 @@ private:
 
     StartupManager startupManager;
 
-    
 
+    struct DiskPageWidgets {
+        QWidget* pageWidget = nullptr;
+        QCustomPlot* graph = nullptr;
+        QLabel* activeTimeLabel = nullptr;
+        QLabel* readSpeedLabel = nullptr;
+        QLabel* writeSpeedLabel = nullptr;
+        QLabel* capacityLabel = nullptr;
+        
+        QString mountPath;
+        FsInfo fsInfo; 
+
+        std::string deviceName; // To store the device name, e.g., "sda1"
+    DiskStats prevStats;    // To store the previous stats for *this* disk
+    long prevIOTime;
+    };
+    QList<DiskPageWidgets> m_diskPages;
     CpuTimes prevCpuTimes;
     std::map<std::string, long> prevProcessJiffies;
     std::map<std::string, IoStats> prevProcessIo;

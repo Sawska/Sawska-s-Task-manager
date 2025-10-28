@@ -88,15 +88,8 @@ std::string ProcessParser::getProcessorSpecs() {
         }
     }
 
+return specs["model name"];
 
-    std::string jsonOutput = "{\n";
-    jsonOutput += "  \"vendor_name\": \"" + specs["vendor_id"] + "\",\n";
-    jsonOutput += "  \"model_name\": \"" + specs["model name"] + "\",\n";
-    jsonOutput += "  \"cores\": " + specs["cpu cores"] + ",\n";
-    jsonOutput += "  \"cache_size\": \"" + specs["cache size"] + "\"\n";
-    jsonOutput += "}";
-
-    return jsonOutput;
 }
 
 std::string ProcessParser::getCurrentCpuMhz() {
@@ -1039,4 +1032,53 @@ std::vector<std::string> ProcessParser::getMountedPartitions() {
     
     std::vector<std::string> partitions(partitions_set.begin(), partitions_set.end());
     return partitions;
+}
+
+
+std::string ProcessParser::getDeviceForMountPoint(std::string mountPath) {
+    std::ifstream file("/proc/mounts");
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string devicePath, mount;
+        if (!(iss >> devicePath >> mount)) { continue; }
+        if (mount == mountPath) {
+            // Strip "/dev/" from the path (e.g., "/dev/sda1" -> "sda1")
+            if (devicePath.rfind("/dev/", 0) == 0) {
+                return devicePath.substr(5);
+            }
+            return devicePath;
+        }
+    }
+    return "unknown"; // Return a default if not found
+}
+
+// This is your new *overloaded* function to get stats for one specific device
+DiskStats ProcessParser::getDiskStats(std::string deviceName) {
+    std::ifstream file("/proc/diskstats");
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        int major, minor;
+        std::string device;
+        if (!(iss >> major >> minor >> device)) continue;
+
+        if (device == deviceName) {
+            DiskStats stats = {};
+            std::string token;
+            // Parse the /proc/diskstats line.
+            // Column 6 (index 5) is sectorsRead
+            // Column 10 (index 9) is sectorsWritten
+            // Column 13 (index 12) is timeSpentIO
+            for (int i = 0; i < 3; ++i) iss >> token; // Skip (reads merged, etc.)
+            iss >> stats.sectorsRead; // Col 6
+            for (int i = 0; i < 3; ++i) iss >> token; // Skip (time_read, etc.)
+            iss >> stats.sectorsWritten; // Col 10
+            iss >> token; // Skip (writes_merged)
+            iss >> token; // Skip (time_write)
+            iss >> stats.timeSpentIO; // Col 13
+            return stats;
+        }
+    }
+    return {}; // Return empty stats if not found
 }

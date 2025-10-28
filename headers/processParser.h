@@ -106,6 +106,9 @@ class ProcessParser {
 
     std::string getSwapInfo();
 
+    std::string getDeviceForMountPoint(std::string mountPath);
+    DiskStats getDiskStats(std::string deviceName);
+
 
     NetStats getNetworkStats();
     

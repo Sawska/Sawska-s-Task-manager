@@ -127,10 +127,7 @@ ui->tabWidget->setCurrentIndex(0);
     prevCpuTimes = parser.getCpuTimes();
 
     setupPerformanceTab();
-
-    m_prevDiskStats = parser.getDiskStats();
     m_prevNetStats = parser.getNetworkStats();
-    m_prevDiskIOTime = m_prevDiskStats.timeSpentIO;
 
     m_currentGpuStats = parser.getAmdGpuStats();
     
@@ -558,36 +555,129 @@ void MainWindow::setupGraph(QCustomPlot* graph, const QColor& color, bool twoLin
 
 void MainWindow::setupPerformanceTab()
 {
-    ui->performanceList->addItem("CPU");
-    ui->performanceList->addItem("Memory");
+    // --- 1. Get pointers to the pages from the .ui file ---
+    // We need to keep them safe before we clear the stack.
+    QWidget* cpuPage = ui->cpuPage;
+    QWidget* memoryPage = ui->memoryPage;
+    QWidget* ethernetPage = ui->ethernetPage;
+    QWidget* gpuPage = ui->gpuPage;
     
-    std::string diskName = parser.getPrimaryDiskName();
-    diskName.erase(std::remove_if(diskName.begin(), diskName.end(), ::isdigit), diskName.end());
-    ui->performanceList->addItem(QString("Disk 0 (%1)").arg(QString::fromStdString(diskName)));
+    // This is the original, unused disk page from the .ui file.
+    // We will delete it. It's causing the crash.
+    ui->diskPage->deleteLater(); 
+
+    // --- 2. Remove all pages from the stacked widget ---
+    // This gives us a clean slate to rebuild the order.
+    while (ui->performanceStackedWidget->count() > 0) {
+        ui->performanceStackedWidget->removeWidget(ui->performanceStackedWidget->widget(0));
+    }
+
+    // --- 3. Add pages back in the CORRECT order ---
+
+    // Add CPU (Index 0)
+    ui->performanceStackedWidget->addWidget(cpuPage); 
+    ui->performanceList->addItem("CPU");              
+
+    // Add Memory (Index 1)
+    ui->performanceStackedWidget->addWidget(memoryPage); 
+    ui->performanceList->addItem("Memory");                
+
+    // Add Dynamic Disks (Index 2, 3, ...)
+    std::vector<std::string> mountPaths = parser.getMountedPartitions();
+    for (const std::string& path : mountPaths) {
+        QString qPath = QString::fromStdString(path);
+        
+        // --- This is your existing code for creating a disk page ---
+        QWidget* diskPage = new QWidget();
+        QVBoxLayout* layout = new QVBoxLayout(diskPage);
+        
+        QLabel* nameLabel = new QLabel(QString("Disk (%1)").arg(qPath));
+        nameLabel->setFont(ui->cpuNameLabel->font()); 
+        
+        QCustomPlot* graph = new QCustomPlot();
+        graph->setMinimumSize(0, 150);
+        setupGraph(graph, Qt::green); // Setup the new graph
+        
+        QFormLayout* formLayout = new QFormLayout();
+        QLabel* activeTimeLabel = new QLabel("0 %");
+        QLabel* readSpeedLabel = new QLabel("0.0 MB/s");
+        QLabel* writeSpeedLabel = new QLabel("0.0 MB/s");
+        QLabel* capacityLabel = new QLabel("0.0 / 0.0 GB");
+
+        QFont boldFont = activeTimeLabel->font();
+        boldFont.setBold(true);
+        activeTimeLabel->setFont(boldFont);
+        readSpeedLabel->setFont(boldFont);
+        writeSpeedLabel->setFont(boldFont);
+        capacityLabel->setFont(boldFont);
+        
+        formLayout->addRow("Active time:", activeTimeLabel);
+        formLayout->addRow("Read speed:", readSpeedLabel);
+        formLayout->addRow("Write speed:", writeSpeedLabel);
+        formLayout->addRow("Capacity:", capacityLabel);
+        
+        layout->addWidget(nameLabel);
+        layout->addWidget(graph);
+        layout->addLayout(formLayout);
+        layout->addSpacerItem(new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding));
+        // --- End of your disk page code ---
+
+        // Add the newly created disk page to the stack
+        ui->performanceStackedWidget->addWidget(diskPage);
+        // Add its name to the list
+        ui->performanceList->addItem(qPath);
+
+        std::string deviceName = parser.getDeviceForMountPoint(path);
+        
+        // Store the widgets
+        DiskPageWidgets pageWidgets;
+        pageWidgets.pageWidget = diskPage;
+        pageWidgets.graph = graph;
+        pageWidgets.activeTimeLabel = activeTimeLabel;
+        pageWidgets.readSpeedLabel = readSpeedLabel;
+        pageWidgets.writeSpeedLabel = writeSpeedLabel;
+        pageWidgets.capacityLabel = capacityLabel;
+        pageWidgets.mountPath = qPath;
+
+
+        pageWidgets.deviceName = deviceName;
+        // Get initial stats for *this* device
+        pageWidgets.prevStats = parser.getDiskStats(pageWidgets.deviceName); 
+        pageWidgets.prevIOTime = pageWidgets.prevStats.timeSpentIO;
+        
+        m_diskPages.append(pageWidgets);
+    }
     
+    // Add Ethernet (Index N)
+    ui->performanceStackedWidget->addWidget(ethernetPage); 
     std::string netIface = parser.getPrimaryNetworkInterface();
     ui->performanceList->addItem(QString("Ethernet (%1)").arg(QString::fromStdString(netIface)));
+
+    // Add GPU (Index N+1)
+    ui->performanceStackedWidget->addWidget(gpuPage); 
+    ui->performanceList->addItem("GPU 0");            
     
-    ui->performanceList->addItem("GPU 0");
-    
-    connect(ui->performanceList, &QListWidget::currentRowChanged,
-            this, &MainWindow::on_performanceList_currentRowChanged);
-    
+connect(ui->performanceList, &QListWidget::currentRowChanged,
+        ui->performanceStackedWidget, &QStackedWidget::setCurrentIndex);
+            
+    // --- 5. Setup labels and graphs ---
     ui->cpuNameLabel->setText(QString::fromStdString(parser.getProcessorSpecs()));
     ui->coresLabel->setText(QString::number(parser.getCoreCount()));
     ui->logicalProcessorsLabel->setText(QString::number(parser.getLogicalProcessorCount()));
-    ui->diskNameLabel->setText(QString("Disk 0 (%1)").arg(QString::fromStdString(diskName)));
     ui->netInterfaceLabel->setText(QString("Ethernet (%1)").arg(QString::fromStdString(netIface)));
     
+    // Setup the graphs for the *original* ui pages
     setupGraph(ui->cpuGraph, Qt::blue);
     setupGraph(ui->memoryGraph, Qt::magenta);
-    setupGraph(ui->diskGraph, Qt::green);
+    // *** DO NOT setup ui->diskGraph, it was deleted. ***
     setupGraph(ui->ethernetGraph, Qt::cyan, true);
-
     setupGraph(ui->gpuGraph, QColor(220, 50, 50));
     
+    // --- 6. Set initial page ---
     ui->performanceList->setCurrentRow(0);
 }
+
+
 
 void MainWindow::on_performanceList_currentRowChanged(int row)
 {
@@ -617,17 +707,46 @@ void MainWindow::refreshStats()
         memUsagePercent = (static_cast<double>(memInfo.memUsed()) / memInfo.memTotal) * 100.0;
     }
 
-    DiskStats currentDiskStats = parser.getDiskStats();
     double timeIntervalSec = processTimer->interval() / 1000.0;
-    
-    double readSpeed = (currentDiskStats.sectorsRead - m_prevDiskStats.sectorsRead) * 512.0 / timeIntervalSec;
-    double writeSpeed = (currentDiskStats.sectorsWritten - m_prevDiskStats.sectorsWritten) * 512.0 / timeIntervalSec;
-    
-    long deltaIOTime = currentDiskStats.timeSpentIO - m_prevDiskIOTime;
-    double diskActivePercent = (static_cast<double>(deltaIOTime) / (timeIntervalSec * 1000.0)) * 100.0;
+
+    DiskStats globalCurrentDiskStats = parser.getDiskStats();
+    long globalDeltaIOTime = globalCurrentDiskStats.timeSpentIO - m_prevDiskIOTime;
+    double diskActivePercent = (static_cast<double>(globalDeltaIOTime) / (timeIntervalSec * 1000.0)) * 100.0;
     if (diskActivePercent > 100.0) diskActivePercent = 100.0;
-    
-    FsInfo fsInfo = parser.getFilesystemStats("/");
+
+    for (DiskPageWidgets& page : m_diskPages) {
+        // --- ADD THIS NEW PER-PAGE LOGIC ---
+        
+        // 1. Get current stats for *this* specific device
+        DiskStats currentDiskStats = parser.getDiskStats(page.deviceName);
+        
+        // 2. Calculate deltas based on *this page's* previous stats
+     double readSpeed = (currentDiskStats.sectorsRead - page.prevStats.sectorsRead) * 512.0 / timeIntervalSec;
+        double writeSpeed = (currentDiskStats.sectorsWritten - page.prevStats.sectorsWritten) * 512.0 / timeIntervalSec;
+        
+        long deltaIOTime = currentDiskStats.timeSpentIO - page.prevIOTime;
+        double diskActivePercent = (static_cast<double>(deltaIOTime) / (timeIntervalSec * 1000.0)) * 100.0;
+        if (diskActivePercent > 100.0) diskActivePercent = 100.0;
+
+        // 3. Update this page's labels
+        page.activeTimeLabel->setText(QString::number(diskActivePercent, 'f', 0) + " %");
+        page.readSpeedLabel->setText(formatBytesRate(readSpeed));
+        page.writeSpeedLabel->setText(formatBytesRate(writeSpeed));
+        
+        // 5. Store current stats as previous stats for *this page*
+        page.prevStats = currentDiskStats;
+        page.prevIOTime = currentDiskStats.timeSpentIO;
+
+        // --- END OF NEW LOGIC ---
+
+        // (This part is your old logic, which is fine)
+        page.fsInfo = parser.getFilesystemStats(page.mountPath.toStdString());
+        double usedGB = page.fsInfo.used() / (1024.0*1024.0*1024.0);
+        double totalGB = page.fsInfo.total / (1024.0*1024.0*1024.0);
+        page.capacityLabel->setText(QString("%1 / %2 GB")
+                                    .arg(usedGB, 0, 'f', 1)
+                                    .arg(totalGB, 0, 'f', 1));
+    }
 
     NetStats currentNetStats = parser.getNetworkStats();
     double sendSpeed = (currentNetStats.bytesSent - m_prevNetStats.bytesSent) * 8.0 / timeIntervalSec;
@@ -840,31 +959,62 @@ ui->swapUsageLabel->setText(QString("%1 / %2")
     ui->netSendLabel->setText(formatBitsRate(sendSpeed));
     ui->netReceiveLabel->setText(formatBitsRate(recvSpeed));
 
-    int currentIndex = ui->performanceStackedWidget->currentIndex();
-    QCustomPlot* currentGraph = qobject_cast<QCustomPlot*>(ui->performanceStackedWidget->widget(currentIndex)->findChild<QCustomPlot*>());
+    // int currentIndex = ui->performanceStackedWidget->currentIndex();
+    // QCustomPlot* currentGraph = qobject_cast<QCustomPlot*>(ui->performanceStackedWidget->widget(currentIndex)->findChild<QCustomPlot*>());
     
+    // if (currentGraph) {
+    //     currentGraph->xAxis->setRange(currentTime, 60, Qt::AlignRight);
+        
+    //     if (currentIndex == 0) { 
+    //         ui->cpuGraph->graph(0)->setData(m_timeData, m_cpuData);
+    //         ui->cpuGraph->yAxis->setRange(0, 100);
+    //     } else if (currentIndex == 1) { 
+    //         ui->memoryGraph->graph(0)->setData(m_timeData, m_memData);
+    //         ui->memoryGraph->yAxis->setRange(0, 100);
+    //     } else if (currentIndex == 2) { 
+    //         ui->diskGraph->graph(0)->setData(m_timeData, m_diskData);
+    //         ui->diskGraph->yAxis->setRange(0, 100);
+    //     } else if (currentIndex == 3) { 
+    //         ui->ethernetGraph->graph(0)->setData(m_timeData, m_netRecvData);
+    //         ui->ethernetGraph->graph(1)->setData(m_timeData, m_netSendData);
+    //         double maxRecv = m_netRecvData.isEmpty() ? 100.0 : *std::max_element(m_netRecvData.constBegin(), m_netRecvData.constEnd());
+    //         double maxSend = m_netSendData.isEmpty() ? 100.0 : *std::max_element(m_netSendData.constBegin(), m_netSendData.constEnd());
+    //         double maxSpeed = qMax(100.0, qMax(maxRecv, maxSend)); 
+    //         ui->ethernetGraph->yAxis->setRange(0, maxSpeed * 1.1); 
+    //     } else if(currentIndex == 4) {
+    //         ui->gpuGraph->graph(0)->setData(m_timeData, m_gpuUsageData);
+    //         ui->gpuGraph->yAxis->setRange(0, 100);
+    //     }
+        
+    //     currentGraph->replot();
+    // }
+
+
+    int currentIndex = ui->performanceStackedWidget->currentIndex();
+    QWidget* currentPage = ui->performanceStackedWidget->widget(currentIndex);
+    QCustomPlot* currentGraph = currentPage->findChild<QCustomPlot*>();
+
     if (currentGraph) {
         currentGraph->xAxis->setRange(currentTime, 60, Qt::AlignRight);
-        
-        if (currentIndex == 0) { 
+
+        if (currentPage == ui->cpuPage) {
             ui->cpuGraph->graph(0)->setData(m_timeData, m_cpuData);
             ui->cpuGraph->yAxis->setRange(0, 100);
-        } else if (currentIndex == 1) { 
+        } else if (currentPage == ui->memoryPage) {
             ui->memoryGraph->graph(0)->setData(m_timeData, m_memData);
             ui->memoryGraph->yAxis->setRange(0, 100);
-        } else if (currentIndex == 2) { 
-            ui->diskGraph->graph(0)->setData(m_timeData, m_diskData);
-            ui->diskGraph->yAxis->setRange(0, 100);
-        } else if (currentIndex == 3) { 
-            ui->ethernetGraph->graph(0)->setData(m_timeData, m_netRecvData);
-            ui->ethernetGraph->graph(1)->setData(m_timeData, m_netSendData);
-            double maxRecv = m_netRecvData.isEmpty() ? 100.0 : *std::max_element(m_netRecvData.constBegin(), m_netRecvData.constEnd());
-            double maxSend = m_netSendData.isEmpty() ? 100.0 : *std::max_element(m_netSendData.constBegin(), m_netSendData.constEnd());
-            double maxSpeed = qMax(100.0, qMax(maxRecv, maxSend)); 
-            ui->ethernetGraph->yAxis->setRange(0, maxSpeed * 1.1); 
-        } else if(currentIndex == 4) {
+        } else if (currentPage == ui->ethernetPage) {
+        } else if (currentPage == ui->gpuPage) {
             ui->gpuGraph->graph(0)->setData(m_timeData, m_gpuUsageData);
             ui->gpuGraph->yAxis->setRange(0, 100);
+        } else {
+            for (const DiskPageWidgets& page : m_diskPages) {
+                if (currentPage == page.pageWidget) {
+                    page.graph->graph(0)->setData(m_timeData, m_diskData);
+                    page.graph->yAxis->setRange(0, 100);
+                    break; 
+                }
+            }
         }
         
         currentGraph->replot();
@@ -880,7 +1030,7 @@ ui->swapUsageLabel->setText(QString("%1 / %2")
     prevCpuTimes = currentCpuTimes;
     prevProcessJiffies = currentProcessJiffies;
     prevProcessIo = currentProcessIo;
-    m_prevDiskStats = currentDiskStats;
     m_prevNetStats = currentNetStats;
-    m_prevDiskIOTime = currentDiskStats.timeSpentIO;
+
+    m_prevDiskIOTime = globalCurrentDiskStats.timeSpentIO;
 }
